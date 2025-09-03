@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Upload, FileText, X } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { cn } from "@/lib/utils";
 
 interface Department {
   id: string;

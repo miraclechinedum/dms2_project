@@ -9,6 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,9 +34,9 @@ interface Document {
   status: string;
   created_at: string;
   updated_at: string;
-  uploader?: { full_name: string };
-  assigned_user?: { full_name: string };
-  assigned_department?: { name: string };
+  uploader_name?: string; // Add this
+  assigned_user_name?: string; // Add this
+  assigned_department_name?: string; // Add this
 }
 
 interface DocumentListProps {
