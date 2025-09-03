@@ -1,16 +1,17 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import { DatabaseService } from './database';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 export interface User {
   id: string;
-  name: string;
+  name: string; 
   email: string;
   department_id: string | null;
   created_at: string;
   updated_at: string;
+  department_name?: string;
 }
 
 export class AuthService {
@@ -22,31 +23,40 @@ export class AuthService {
     return bcrypt.compare(password, hashedPassword);
   }
 
-  static generateToken(userId: string): string {
-    return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+  static async generateToken(userId: string): Promise<string> {
+    const secret = new TextEncoder().encode(JWT_SECRET);
+    const alg = 'HS256';
+
+    return new SignJWT({ userId })
+      .setProtectedHeader({ alg })
+      .setExpirationTime('7d')
+      .sign(secret);
   }
 
-  static verifyToken(token: string): { userId: string } | null {
+  static async verifyToken(token: string): Promise<{ userId: string } | null> {
     try {
-      return jwt.verify(token, JWT_SECRET) as { userId: string };
+      const secret = new TextEncoder().encode(JWT_SECRET);
+      const { payload } = await jwtVerify(token, secret);
+      return payload as { userId: string };
     } catch {
       return null;
     }
   }
 
-  static async createUser(email: string, password: string, fullName: string, departmentId: string): Promise<User> {
-    const hashedPassword = await this.hashPassword(password);
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    const sql = `
-      INSERT INTO users (id, email, password_hash, full_name, department_id, role, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'member', NOW(), NOW())
-    `;
-    
-    await DatabaseService.query(sql, [userId, email, hashedPassword, fullName, departmentId]);
-    
-    return this.getUserById(userId);
-  }
+  // lib/auth.ts
+static async createUser(email: string, password: string, fullName: string, departmentId: string): Promise<User> {
+  const hashedPassword = await this.hashPassword(password);
+  const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  const sql = `
+    INSERT INTO users (id, email, password_hash, name, department_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+  `;
+  
+  await DatabaseService.query(sql, [userId, email, hashedPassword, fullName, departmentId]);
+  
+  return this.getUserById(userId);
+}
 
   static async authenticateUser(email: string, password: string): Promise<{ user: User; token: string } | null> {
     const sql = `
@@ -65,7 +75,7 @@ export class AuthService {
     
     if (!isValidPassword) return null;
     
-    const token = this.generateToken(user.id);
+    const token = await this.generateToken(user.id);
     
     // Remove password hash from response
     delete user.password_hash;

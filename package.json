@@ -55,7 +55,7 @@
     "eslint-config-next": "13.5.1",
     "fabric": "^6.7.1",
     "input-otp": "^1.2.4",
-    "jsonwebtoken": "^9.0.2",
+    "jose": "^6.1.0",
     "lucide-react": "^0.446.0",
     "mysql2": "^3.14.4",
     "next": "13.5.1",
