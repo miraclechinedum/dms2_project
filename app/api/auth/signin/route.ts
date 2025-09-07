@@ -1,3 +1,4 @@
+// app/api/auth/signin/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await AuthService.authenticateUser(email, password);
-
+    
     if (!result) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -26,12 +27,13 @@ export async function POST(request: NextRequest) {
       message: 'Signed in successfully'
     });
 
-    // Set HTTP-only cookie
+    // Set HTTP-only cookie with proper configuration
     response.cookies.set('auth-token', result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: '/',
     });
 
     return response;

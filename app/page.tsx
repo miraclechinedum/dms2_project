@@ -1,3 +1,4 @@
+// app/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -11,6 +12,7 @@ import { NotificationCenter } from "@/components/notifications/notification-cent
 import { UserManagement } from "@/components/users/user-management";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Toaster } from "react-hot-toast";
+import { DashboardRedirect } from "@/components/auth/dashboard-redirect";
 
 interface Document {
   id: string;
@@ -24,6 +26,11 @@ export default function Home() {
     null
   );
   const { user, profile, loading } = useAuth();
+
+  // Add dashboard redirect
+  if (user && profile) {
+    return <DashboardRedirect />;
+  }
 
   if (loading) {
     return (

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +36,7 @@ export function AuthForm() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("signin");
+  const router = useRouter();
 
   const { signIn, signUp } = useAuth();
 
@@ -65,6 +67,7 @@ export function AuthForm() {
       toast.error(error);
     } else {
       toast.success("Signed in successfully!");
+      router.push("/dashboard");
     }
     setIsLoading(false);
   };

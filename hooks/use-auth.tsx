@@ -4,8 +4,8 @@ import { useEffect, useState, createContext, useContext } from "react";
 
 export interface User {
   id: string;
+  name: string;
   email: string;
-  full_name: string;
   department_id: string | null;
   role: "admin" | "manager" | "member";
   created_at: string;
@@ -33,14 +33,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check session on mount
+  // Check session on mount and on focus
   useEffect(() => {
     checkAuth();
+
+    // Re-check auth when window gains focus
+    const handleFocus = () => {
+      checkAuth();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
   }, []);
 
   const checkAuth = async () => {
     try {
-      const response = await fetch("/api/auth/me", { credentials: "include" });
+      const response = await fetch("/api/auth/me", {
+        credentials: "include",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      });
+
       if (response.ok) {
         const { user } = await response.json();
         setUser(user);
@@ -94,7 +108,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (response.ok) {
-        // Optionally set user after signup
+        // After signup, automatically sign in
+        const signInResult = await signIn(email, password);
+        if (signInResult.error) {
+          return { error: signInResult.error };
+        }
         return {};
       } else {
         return { error: data.error || "Signup failed" };

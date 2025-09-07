@@ -6,9 +6,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-i
 
 export interface User {
   id: string;
-  name: string; 
+  name: string;
   email: string;
   department_id: string | null;
+  role: 'admin' | 'manager' | 'member';
   created_at: string;
   updated_at: string;
   department_name?: string;
@@ -37,26 +38,30 @@ export class AuthService {
     try {
       const secret = new TextEncoder().encode(JWT_SECRET);
       const { payload } = await jwtVerify(token, secret);
-      return payload as { userId: string };
+      
+      // Make sure the payload has the expected structure
+      if (payload && typeof payload === 'object' && 'userId' in payload) {
+        return { userId: payload.userId as string };
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
-  // lib/auth.ts
-static async createUser(email: string, password: string, fullName: string, departmentId: string): Promise<User> {
-  const hashedPassword = await this.hashPassword(password);
-  const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  const sql = `
-    INSERT INTO users (id, email, password_hash, name, department_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-  `;
-  
-  await DatabaseService.query(sql, [userId, email, hashedPassword, fullName, departmentId]);
-  
-  return this.getUserById(userId);
-}
+  static async createUser(email: string, password: string, fullName: string, departmentId: string): Promise<User> {
+    const hashedPassword = await this.hashPassword(password);
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const sql = `
+      INSERT INTO users (id, email, password_hash, name, department_id, role, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'member', NOW(), NOW())
+    `;
+    
+    await DatabaseService.query(sql, [userId, email, hashedPassword, fullName, departmentId]);
+    
+    return this.getUserById(userId);
+  }
 
   static async authenticateUser(email: string, password: string): Promise<{ user: User; token: string } | null> {
     const sql = `
@@ -98,5 +103,25 @@ static async createUser(email: string, password: string, fullName: string, depar
     }
     
     return users[0];
+  }
+
+  static async getUserByEmail(email: string): Promise<User | null> {
+    const sql = `
+      SELECT u.*, d.name as department_name 
+      FROM users u 
+      LEFT JOIN departments d ON u.department_id = d.id 
+      WHERE u.email = ?
+    `;
+    
+    const users = await DatabaseService.query(sql, [email]) as any[];
+    
+    if (users.length === 0) {
+      return null;
+    }
+    
+    const user = users[0];
+    delete user.password_hash;
+    
+    return user;
   }
 }
