@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -20,25 +20,41 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface SidebarProps {
-  activeView: string;
-  onViewChange: (view: string) => void;
-}
-
-export function Sidebar({ activeView, onViewChange }: SidebarProps) {
+export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { profile, signOut } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "documents", label: "Documents", icon: FileText },
-    { id: "upload", label: "Upload", icon: Upload },
-    { id: "users", label: "Users", icon: Users },
-    { id: "departments", label: "Departments", icon: Building2 },
-    { id: "notifications", label: "Notifications", icon: Bell },
-    { id: "activity", label: "Activity Log", icon: Activity },
-    { id: "settings", label: "Settings", icon: Settings },
+    { id: "dashboard", label: "Dashboard", icon: Home, route: "/dashboard" },
+    {
+      id: "documents",
+      label: "Documents",
+      icon: FileText,
+      route: "/documents",
+    },
+    { id: "upload", label: "Upload", icon: Upload, route: "/upload" },
+    { id: "users", label: "Users", icon: Users, route: "/users" },
+    {
+      id: "departments",
+      label: "Departments",
+      icon: Building2,
+      route: "/departments",
+    },
+    {
+      id: "notifications",
+      label: "Notifications",
+      icon: Bell,
+      route: "/notifications",
+    },
+    {
+      id: "activity",
+      label: "Activity Log",
+      icon: Activity,
+      route: "/activity",
+    },
+    { id: "settings", label: "Settings", icon: Settings, route: "/settings" },
   ];
 
   const handleSignOut = async () => {
@@ -46,23 +62,19 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
     router.push("/");
   };
 
-  const handleNavigation = (view: string) => {
-    onViewChange(view);
-
-    // If we're on a different page, navigate to the dashboard first
-    // then change the view
-    if (
-      typeof window !== "undefined" &&
-      !window.location.pathname.includes("/dashboard")
-    ) {
-      router.push("/dashboard");
-
-      // Use a small timeout to ensure the navigation happens before changing view
-      setTimeout(() => {
-        onViewChange(view);
-      }, 100);
-    }
+  const handleNavigation = (route: string) => {
+    router.push(route);
   };
+
+  // Determine active view based on current pathname
+  const getActiveView = () => {
+    const currentItem = menuItems.find((item) =>
+      pathname.startsWith(item.route)
+    );
+    return currentItem?.id || "dashboard";
+  };
+
+  const activeView = getActiveView();
 
   return (
     <div
@@ -107,7 +119,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                   "w-full justify-start",
                   isCollapsed ? "px-2" : "px-3"
                 )}
-                onClick={() => handleNavigation(item.id)}
+                onClick={() => handleNavigation(item.route)}
               >
                 <Icon size={16} />
                 {!isCollapsed && <span className="ml-2">{item.label}</span>}
