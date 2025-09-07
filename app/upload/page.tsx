@@ -1,211 +1,214 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Progress } from '@/components/ui/progress'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Upload, FileText, Users, Building2 } from 'lucide-react'
-import { useAuth } from '@/hooks/use-auth'
-import { useDropzone } from 'react-dropzone'
-import { cn } from '@/lib/utils'
+import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useDropzone } from "react-dropzone";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Upload, FileText, X, Users, Building2 } from "lucide-react";
+import { toast } from "react-hot-toast";
+import { cn } from "@/lib/utils";
 
 interface Department {
-  id: string
-  name: string
+  id: string;
+  name: string;
 }
 
 interface User {
-  id: string
-  email: string
-  raw_user_meta_data?: {
-    name?: string
-  }
+  id: string;
+  name: string;
+  email: string;
+  department_id: string;
 }
 
 export default function UploadPage() {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [assignmentType, setAssignmentType] = useState<'user' | 'department'>('department')
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
-  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [isUploading, setIsUploading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  
-  const { user } = useAuth()
-  const router = useRouter()
-  const supabase = createClient()
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assignmentType, setAssignmentType] = useState<"user" | "department">("department");
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const { user } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     if (!user) {
-      router.push('/login')
-      return
+      router.push("/");
+      return;
     }
-    fetchDepartments()
-    fetchUsers()
-  }, [user, router])
+    fetchDepartments();
+    fetchUsers();
+  }, [user, router]);
 
   const fetchDepartments = async () => {
     try {
-      const { data, error } = await supabase
-        .from('departments')
-        .select('*')
-        .order('name')
-
-      if (error) throw error
-      setDepartments(data || [])
-    } catch (err) {
-      console.error('Error fetching departments:', err)
+      const response = await fetch("/api/departments");
+      if (response.ok) {
+        const { departments } = await response.json();
+        setDepartments(departments);
+      }
+    } catch (error) {
+      console.error("Failed to fetch departments:", error);
     }
-  }
+  };
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabase.auth.admin.listUsers()
-      if (error) throw error
-      setUsers(data.users || [])
-    } catch (err) {
-      console.error('Error fetching users:', err)
-    }
-  }
-
-  const onDrop = (acceptedFiles: File[]) => {
-    const file = acceptedFiles[0]
-    if (file && file.type === 'application/pdf') {
-      setSelectedFile(file)
-      if (!title) {
-        setTitle(file.name.replace('.pdf', ''))
+      const response = await fetch("/api/users");
+      if (response.ok) {
+        const { users } = await response.json();
+        setUsers(users);
       }
-      setError('')
-    } else {
-      setError('Please upload a PDF file only')
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
     }
-  }
+  };
+
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      const file = acceptedFiles[0];
+      if (file && file.type === "application/pdf") {
+        setSelectedFile(file);
+        if (!title) {
+          setTitle(file.name.replace(".pdf", ""));
+        }
+      } else {
+        toast.error("Please upload a PDF file only");
+      }
+    },
+    [title]
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf']
+      "application/pdf": [".pdf"],
     },
-    maxFiles: 1
-  })
+    maxFiles: 1,
+  });
 
-  const handleUpload = async () => {
+  const handleUserSelection = (userId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedUsers([...selectedUsers, userId]);
+    } else {
+      setSelectedUsers(selectedUsers.filter(id => id !== userId));
+    }
+  };
+
+  const handleDepartmentSelection = (deptId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedDepartments([...selectedDepartments, deptId]);
+    } else {
+      setSelectedDepartments(selectedDepartments.filter(id => id !== deptId));
+    }
+  };
+
+  const uploadDocument = async () => {
     if (!selectedFile || !title || !user) {
-      setError('Please fill in all required fields')
-      return
+      toast.error("Please fill in all required fields");
+      return;
     }
 
-    if (assignmentType === 'user' && selectedUsers.length === 0) {
-      setError('Please select at least one user')
-      return
+    if (assignmentType === "user" && selectedUsers.length === 0) {
+      toast.error("Please select at least one user");
+      return;
     }
 
-    if (assignmentType === 'department' && selectedDepartments.length === 0) {
-      setError('Please select at least one department')
-      return
+    if (assignmentType === "department" && selectedDepartments.length === 0) {
+      toast.error("Please select at least one department");
+      return;
     }
 
-    setIsUploading(true)
-    setUploadProgress(0)
-    setError('')
+    setIsUploading(true);
+    setUploadProgress(0);
 
     try {
-      // Upload file to Supabase Storage
-      const fileExt = selectedFile.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`
-      const filePath = `documents/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(filePath, selectedFile, {
-          onUploadProgress: (progress) => {
-            setUploadProgress((progress.loaded / progress.total) * 100)
-          }
-        })
-
-      if (uploadError) throw uploadError
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('documents')
-        .getPublicUrl(filePath)
-
-      // Save document metadata
-      const { data: document, error: dbError } = await supabase
-        .from('documents')
-        .insert({
-          filename: fileName,
-          original_name: selectedFile.name,
-          file_path: publicUrl,
-          uploaded_by_id: user.id,
-          description: description
-        })
-        .select()
-        .single()
-
-      if (dbError) throw dbError
-
-      // Create assignments
-      if (assignmentType === 'user') {
-        for (const userId of selectedUsers) {
-          await supabase
-            .from('document_assignments')
-            .insert({
-              document_id: document.id,
-              assigned_to_user_id: userId
-            })
-        }
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("title", title);
+      formData.append("description", description);
+      formData.append("assignmentType", assignmentType);
+      
+      if (assignmentType === "user") {
+        selectedUsers.forEach(userId => {
+          formData.append("assignedUsers", userId);
+        });
       } else {
-        for (const deptId of selectedDepartments) {
-          await supabase
-            .from('document_assignments')
-            .insert({
-              document_id: document.id,
-              assigned_to_department_id: deptId
-            })
-        }
+        selectedDepartments.forEach(deptId => {
+          formData.append("assignedDepartments", deptId);
+        });
       }
 
-      // Log activity
-      await supabase
-        .from('activity_logs')
-        .insert({
-          document_id: document.id,
-          user_id: user.id,
-          action: 'document_uploaded'
-        })
+      // Simulate upload progress
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 200);
 
-      setSuccess('Document uploaded successfully!')
+      const response = await fetch("/api/documents/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      toast.success("Document uploaded successfully!");
+      
       setTimeout(() => {
-        router.push('/documents')
-      }, 2000)
+        router.push("/documents");
+      }, 1000);
 
-    } catch (err) {
-      console.error('Upload error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to upload document')
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upload document"
+      );
     } finally {
-      setIsUploading(false)
+      setIsUploading(false);
     }
-  }
+  };
 
-  const getUserDisplayName = (user: User) => {
-    return user.raw_user_meta_data?.name || user.email.split('@')[0]
+  if (!user) {
+    return null;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-2xl mx-auto">
         <Card>
           <CardHeader>
@@ -248,10 +251,10 @@ export default function UploadPage() {
               <Label>Assignment Type *</Label>
               <Select
                 value={assignmentType}
-                onValueChange={(value: 'user' | 'department') => {
-                  setAssignmentType(value)
-                  setSelectedUsers([])
-                  setSelectedDepartments([])
+                onValueChange={(value: "user" | "department") => {
+                  setAssignmentType(value);
+                  setSelectedUsers([]);
+                  setSelectedDepartments([]);
                 }}
               >
                 <SelectTrigger>
@@ -275,68 +278,72 @@ export default function UploadPage() {
             </div>
 
             {/* User Selection */}
-            {assignmentType === 'user' && (
+            {assignmentType === "user" && (
               <div>
                 <Label>Select Users *</Label>
-                <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
-                  {users.map((user) => (
-                    <label key={user.id} className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedUsers.includes(user.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedUsers([...selectedUsers, user.id])
-                          } else {
-                            setSelectedUsers(selectedUsers.filter(id => id !== user.id))
+                <Card className="p-4">
+                  <div className="space-y-3 max-h-48 overflow-y-auto">
+                    {users.map((user) => (
+                      <div key={user.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`user-${user.id}`}
+                          checked={selectedUsers.includes(user.id)}
+                          onCheckedChange={(checked) =>
+                            handleUserSelection(user.id, checked as boolean)
                           }
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-sm">{getUserDisplayName(user)}</span>
-                    </label>
-                  ))}
-                </div>
-                {selectedUsers.length > 0 && (
-                  <p className="text-sm text-gray-600">
-                    {selectedUsers.length} user(s) selected
-                  </p>
-                )}
+                        />
+                        <Label
+                          htmlFor={`user-${user.id}`}
+                          className="text-sm font-normal cursor-pointer flex-1"
+                        >
+                          {user.name} ({user.email})
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedUsers.length > 0 && (
+                    <p className="text-sm text-gray-600 mt-2">
+                      {selectedUsers.length} user(s) selected
+                    </p>
+                  )}
+                </Card>
               </div>
             )}
 
             {/* Department Selection */}
-            {assignmentType === 'department' && (
+            {assignmentType === "department" && (
               <div>
                 <Label>Select Departments *</Label>
-                <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
-                  {departments.map((dept) => (
-                    <label key={dept.id} className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedDepartments.includes(dept.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedDepartments([...selectedDepartments, dept.id])
-                          } else {
-                            setSelectedDepartments(selectedDepartments.filter(id => id !== dept.id))
+                <Card className="p-4">
+                  <div className="space-y-3 max-h-48 overflow-y-auto">
+                    {departments.map((dept) => (
+                      <div key={dept.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`dept-${dept.id}`}
+                          checked={selectedDepartments.includes(dept.id)}
+                          onCheckedChange={(checked) =>
+                            handleDepartmentSelection(dept.id, checked as boolean)
                           }
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-sm">{dept.name}</span>
-                    </label>
-                  ))}
-                </div>
-                {selectedDepartments.length > 0 && (
-                  <p className="text-sm text-gray-600">
-                    {selectedDepartments.length} department(s) selected
-                  </p>
-                )}
+                        />
+                        <Label
+                          htmlFor={`dept-${dept.id}`}
+                          className="text-sm font-normal cursor-pointer flex-1"
+                        >
+                          {dept.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedDepartments.length > 0 && (
+                    <p className="text-sm text-gray-600 mt-2">
+                      {selectedDepartments.length} department(s) selected
+                    </p>
+                  )}
+                </Card>
               </div>
             )}
 
-            {/* File Upload */}
+            {/* File Upload Area */}
             <div>
               <Label>Upload PDF File *</Label>
               <div
@@ -355,17 +362,31 @@ export default function UploadPage() {
                   <div className="flex items-center justify-center space-x-2">
                     <FileText className="h-8 w-8 text-green-600" />
                     <div>
-                      <p className="font-medium text-green-700">{selectedFile.name}</p>
+                      <p className="font-medium text-green-700">
+                        {selectedFile.name}
+                      </p>
                       <p className="text-sm text-green-600">
                         {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                       </p>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFile(null);
+                      }}
+                    >
+                      <X size={16} />
+                    </Button>
                   </div>
                 ) : (
                   <div>
                     <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-lg font-medium text-gray-700">
-                      {isDragActive ? "Drop your PDF here" : "Drag & drop a PDF file here"}
+                      {isDragActive
+                        ? "Drop your PDF here"
+                        : "Drag & drop a PDF file here"}
                     </p>
                     <p className="text-sm text-gray-500">or click to browse</p>
                   </div>
@@ -384,30 +405,16 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* Error/Success Messages */}
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {success && (
-              <Alert className="border-green-200 bg-green-50">
-                <AlertDescription className="text-green-800">{success}</AlertDescription>
-              </Alert>
-            )}
-
-            {/* Upload Button */}
             <Button
-              onClick={handleUpload}
+              onClick={uploadDocument}
               disabled={!selectedFile || !title || isUploading}
               className="w-full"
             >
-              {isUploading ? 'Uploading...' : 'Upload Document'}
+              {isUploading ? "Uploading..." : "Upload Document"}
             </Button>
           </CardContent>
         </Card>
       </div>
     </div>
-  )
+  );
 }

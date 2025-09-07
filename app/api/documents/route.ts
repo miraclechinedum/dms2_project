@@ -22,13 +22,9 @@ export async function GET(request: NextRequest) {
     let sql = `
       SELECT 
         d.*,
-        u1.full_name as uploader_name,
-        u2.full_name as assigned_user_name,
-        dept.name as assigned_department_name
+        u1.name as uploader_name
       FROM documents d
       LEFT JOIN users u1 ON d.uploaded_by = u1.id
-      LEFT JOIN users u2 ON d.assigned_to_user = u2.id
-      LEFT JOIN departments dept ON d.assigned_to_department = dept.id
       WHERE 
     `;
 
@@ -40,8 +36,11 @@ export async function GET(request: NextRequest) {
     } else {
       // Users can see documents assigned to them or their department
       sql += `
-        (d.assigned_to_user = ? OR 
-         d.assigned_to_department = ? OR 
+        (EXISTS (
+           SELECT 1 FROM document_assignments da 
+           WHERE da.document_id = d.id 
+           AND (da.assigned_to_user = ? OR da.assigned_to_department = ?)
+         ) OR 
          d.uploaded_by = ?)
       `;
       params = [decoded.userId, user.department_id, decoded.userId];
@@ -51,7 +50,24 @@ export async function GET(request: NextRequest) {
 
     const documents = await DatabaseService.query(sql, params);
 
-    return NextResponse.json({ documents });
+    // Get assignments for each document
+    const documentsWithAssignments = await Promise.all(
+      documents.map(async (doc: any) => {
+        const assignmentsSql = `
+          SELECT 
+            da.*,
+            u.name as assigned_user_name,
+            dept.name as assigned_department_name
+          FROM document_assignments da
+          LEFT JOIN users u ON da.assigned_to_user = u.id
+          LEFT JOIN departments dept ON da.assigned_to_department = dept.id
+          WHERE da.document_id = ?
+        `;
+        const assignments = await DatabaseService.query(assignmentsSql, [doc.id]);
+        return { ...doc, assignments };
+      })
+    );
+    return NextResponse.json({ documents: documentsWithAssignments });
 
   } catch (error) {
     console.error('Fetch documents error:', error);

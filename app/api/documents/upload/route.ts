@@ -20,9 +20,10 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const title = formData.get('title') as string;
+    const description = formData.get('description') as string;
     const assignmentType = formData.get('assignmentType') as string;
-    const assignedToUser = formData.get('assignedToUser') as string;
-    const assignedToDepartment = formData.get('assignedToDepartment') as string;
+    const assignedUsers = formData.getAll('assignedUsers') as string[];
+    const assignedDepartments = formData.getAll('assignedDepartments') as string[];
 
     if (!file || !title) {
       return NextResponse.json({ error: 'File and title are required' }, { status: 400 });
@@ -43,8 +44,8 @@ export async function POST(request: NextRequest) {
     // Save to database
     const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const sql = `
-      INSERT INTO documents (id, title, file_path, file_size, mime_type, uploaded_by, assigned_to_user, assigned_to_department, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+      INSERT INTO documents (id, title, file_path, file_size, mime_type, uploaded_by, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
     `;
 
     await DatabaseService.query(sql, [
@@ -53,38 +54,63 @@ export async function POST(request: NextRequest) {
       `/uploads/documents/${fileName}`,
       file.size,
       file.type,
-      decoded.userId,
-      assignmentType === 'user' ? assignedToUser : null,
-      assignmentType === 'department' ? assignedToDepartment : null
+      decoded.userId
     ]);
 
+    // Create document assignments
+    if (assignmentType === 'user' && assignedUsers.length > 0) {
+      for (const userId of assignedUsers) {
+        const assignmentSql = `
+          INSERT INTO document_assignments (id, document_id, assigned_to_user, created_at)
+          VALUES (?, ?, ?, NOW())
+        `;
+        await DatabaseService.query(assignmentSql, [
+          `assign_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          documentId,
+          userId
+        ]);
+      }
+    } else if (assignmentType === 'department' && assignedDepartments.length > 0) {
+      for (const deptId of assignedDepartments) {
+        const assignmentSql = `
+          INSERT INTO document_assignments (id, document_id, assigned_to_department, created_at)
+          VALUES (?, ?, ?, NOW())
+        `;
+        await DatabaseService.query(assignmentSql, [
+          `assign_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          documentId,
+          deptId
+        ]);
+      }
+    }
     // Log activity
     const activitySql = `
       INSERT INTO activity_logs (id, document_id, user_id, action, details)
-      VALUES (?, ?, ?, 'document_uploaded', JSON_OBJECT('title', ?, 'assignment_type', ?))
+      VALUES (?, ?, ?, 'document_uploaded', ?)
     `;
     
     await DatabaseService.query(activitySql, [
       `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       documentId,
       decoded.userId,
-      title,
-      assignmentType
+      JSON.stringify({ title, assignment_type: assignmentType })
     ]);
 
-    // Create notifications
-    if (assignmentType === 'user' && assignedToUser) {
-      const notificationSql = `
-        INSERT INTO notifications (id, user_id, type, message, related_document_id)
-        VALUES (?, ?, 'document_assigned', ?, ?)
-      `;
-      
-      await DatabaseService.query(notificationSql, [
-        `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        assignedToUser,
-        `New document "${title}" has been assigned to you`,
-        documentId
-      ]);
+    // Create notifications for assigned users
+    if (assignmentType === 'user' && assignedUsers.length > 0) {
+      for (const userId of assignedUsers) {
+        const notificationSql = `
+          INSERT INTO notifications (id, user_id, type, message, related_document_id, created_at)
+          VALUES (?, ?, 'document_assigned', ?, ?, NOW())
+        `;
+        
+        await DatabaseService.query(notificationSql, [
+          `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          userId,
+          `New document "${title}" has been assigned to you`,
+          documentId
+        ]);
+      }
     }
 
     return NextResponse.json({ 

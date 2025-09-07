@@ -1,19 +1,18 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter, useParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
-import { Document, Page, pdfjs } from 'react-pdf'
-import { fabric } from 'fabric'
-import { HexColorPicker } from 'react-colorful'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Textarea } from '@/components/ui/textarea'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Separator } from '@/components/ui/separator'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
+import { Document, Page, pdfjs } from "react-pdf";
+import { fabric } from "fabric";
+import { HexColorPicker } from "react-colorful";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,313 +25,296 @@ import {
   X,
   ArrowLeft,
   Palette,
-  Settings,
-  FileText,
   User,
-  Calendar
-} from 'lucide-react'
-import { useAuth } from '@/hooks/use-auth'
-import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
+  Building2,
+  Calendar,
+} from "lucide-react";
+import { format } from "date-fns";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+import { toast } from "react-hot-toast";
 
 // Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 interface Annotation {
-  id: string
-  document_id: string
-  author_id: string
-  type: 'sticky_note' | 'drawing'
-  page_number: number
-  content: any
-  sequence_number: number
-  created_at: string
-  updated_at: string
-  author?: {
-    email: string
-    raw_user_meta_data?: { name?: string }
-  }
+  id: string;
+  document_id: string;
+  user_id: string;
+  page_number: number;
+  annotation_type: "sticky_note" | "drawing";
+  content: any;
+  sequence_number: number;
+  position_x: number;
+  position_y: number;
+  created_at: string;
+  user_name?: string;
+}
+
+interface Assignment {
+  id: string;
+  assigned_to_user?: string;
+  assigned_to_department?: string;
+  assigned_user_name?: string;
+  assigned_department_name?: string;
 }
 
 interface DocumentData {
-  id: string
-  filename: string
-  original_name: string
-  file_path: string
-  uploaded_by_id: string
-  description: string
-  created_at: string
-  uploader?: {
-    email: string
-    raw_user_meta_data?: { name?: string }
-  }
+  id: string;
+  title: string;
+  file_path: string;
+  file_size: number;
+  uploaded_by: string;
+  status: string;
+  created_at: string;
+  uploader_name?: string;
+  assignments?: Assignment[];
 }
 
 export default function DocumentViewerPage() {
-  const params = useParams()
-  const router = useRouter()
-  const { user } = useAuth()
-  const supabase = createClient()
+  const params = useParams();
+  const router = useRouter();
+  const { user } = useAuth();
 
-  const [document, setDocument] = useState<DocumentData | null>(null)
-  const [numPages, setNumPages] = useState<number>(0)
-  const [currentPage, setCurrentPage] = useState<number>(1)
-  const [scale, setScale] = useState<number>(1.0)
-  const [annotations, setAnnotations] = useState<Annotation[]>([])
-  const [selectedTool, setSelectedTool] = useState<'view' | 'sticky' | 'draw'>('view')
-  const [showStickyForm, setShowStickyForm] = useState(false)
-  const [stickyContent, setStickyContent] = useState('')
-  const [stickyPosition, setStickyPosition] = useState<{ x: number; y: number } | null>(null)
-  const [stickyColor, setStickyColor] = useState('#fef08a') // yellow-200
-  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null)
-  const [drawingColor, setDrawingColor] = useState('#3b82f6') // blue-600
-  const [nextSequenceNumber, setNextSequenceNumber] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [document, setDocument] = useState<DocumentData | null>(null);
+  const [numPages, setNumPages] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [scale, setScale] = useState<number>(1.0);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [selectedTool, setSelectedTool] = useState<"view" | "sticky" | "draw">("view");
+  const [showStickyForm, setShowStickyForm] = useState(false);
+  const [stickyContent, setStickyContent] = useState("");
+  const [stickyPosition, setStickyPosition] = useState<{ x: number; y: number } | null>(null);
+  const [stickyColor, setStickyColor] = useState("#fef08a"); // yellow-200
+  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+  const [drawingColor, setDrawingColor] = useState("#3b82f6"); // blue-600
+  const [nextSequenceNumber, setNextSequenceNumber] = useState(1);
+  const [loading, setLoading] = useState(true);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const pageRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) {
-      router.push('/login')
-      return
+      router.push("/");
+      return;
     }
     if (params.id) {
-      fetchDocument()
+      fetchDocument();
     }
-  }, [user, params.id, router])
+  }, [user, params.id, router]);
 
   useEffect(() => {
     if (document) {
-      fetchAnnotations()
+      fetchAnnotations();
     }
-  }, [document, currentPage])
+  }, [document, currentPage]);
 
   useEffect(() => {
-    if (selectedTool === 'draw' && canvasRef.current && !canvas) {
+    if (selectedTool === "draw" && canvasRef.current && !canvas) {
       const fabricCanvas = new fabric.Canvas(canvasRef.current, {
         width: 800,
         height: 600,
-        isDrawingMode: true
-      })
+        isDrawingMode: true,
+      });
 
-      fabricCanvas.freeDrawingBrush.width = 3
-      fabricCanvas.freeDrawingBrush.color = drawingColor
+      fabricCanvas.freeDrawingBrush.width = 3;
+      fabricCanvas.freeDrawingBrush.color = drawingColor;
 
-      setCanvas(fabricCanvas)
+      setCanvas(fabricCanvas);
 
       return () => {
-        fabricCanvas.dispose()
-        setCanvas(null)
-      }
+        fabricCanvas.dispose();
+        setCanvas(null);
+      };
     }
-  }, [selectedTool, canvas, drawingColor])
+  }, [selectedTool, canvas, drawingColor]);
 
   useEffect(() => {
     if (canvas) {
-      canvas.freeDrawingBrush.color = drawingColor
+      canvas.freeDrawingBrush.color = drawingColor;
     }
-  }, [canvas, drawingColor])
+  }, [canvas, drawingColor]);
 
   const fetchDocument = async () => {
     try {
-      const { data: doc, error } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('id', params.id)
-        .single()
-
-      if (error) throw error
-
-      // Get uploader info
-      const { data: uploader } = await supabase.auth.admin.getUserById(doc.uploaded_by_id)
-      
-      setDocument({
-        ...doc,
-        uploader: uploader.user
-      })
-    } catch (err) {
-      console.error('Error fetching document:', err)
-      setError('Failed to load document')
+      const response = await fetch(`/api/documents/${params.id}`);
+      if (response.ok) {
+        const { document } = await response.json();
+        setDocument(document);
+      } else {
+        toast.error("Document not found");
+        router.push("/documents");
+      }
+    } catch (error) {
+      console.error("Failed to fetch document:", error);
+      toast.error("Failed to load document");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const fetchAnnotations = async () => {
-    if (!document) return
+    if (!document) return;
 
     try {
-      const { data: annotations, error } = await supabase
-        .from('annotations')
-        .select('*')
-        .eq('document_id', document.id)
-        .eq('page_number', currentPage)
-        .order('sequence_number')
-
-      if (error) throw error
-
-      // Get author info for each annotation
-      const annotationsWithAuthors = await Promise.all(
-        (annotations || []).map(async (annotation) => {
-          const { data: author } = await supabase.auth.admin.getUserById(annotation.author_id)
-          return {
-            ...annotation,
-            author: author.user
-          }
-        })
-      )
-
-      setAnnotations(annotationsWithAuthors)
-      
-      const maxSeq = Math.max(0, ...annotationsWithAuthors.map(a => a.sequence_number))
-      setNextSequenceNumber(maxSeq + 1)
-    } catch (err) {
-      console.error('Error fetching annotations:', err)
+      const response = await fetch(
+        `/api/annotations?documentId=${document.id}&pageNumber=${currentPage}`
+      );
+      if (response.ok) {
+        const { annotations } = await response.json();
+        setAnnotations(annotations);
+        const maxSeq = Math.max(
+          0,
+          ...annotations.map((a: Annotation) => a.sequence_number)
+        );
+        setNextSequenceNumber(maxSeq + 1);
+      }
+    } catch (error) {
+      console.error("Failed to fetch annotations:", error);
     }
-  }
+  };
 
-  const handlePageClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (selectedTool !== 'sticky' || !pageRef.current) return
+  const handlePageClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (selectedTool !== "sticky" || !pageRef.current) return;
 
-    const rect = pageRef.current.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * 100
-    const y = ((event.clientY - rect.top) / rect.height) * 100
+      const rect = pageRef.current.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 100;
+      const y = ((event.clientY - rect.top) / rect.height) * 100;
 
-    setStickyPosition({ x, y })
-    setShowStickyForm(true)
-  }, [selectedTool])
+      setStickyPosition({ x, y });
+      setShowStickyForm(true);
+    },
+    [selectedTool]
+  );
 
   const saveStickyNote = async () => {
-    if (!stickyContent.trim() || !stickyPosition || !user || !document) return
+    if (!stickyContent.trim() || !stickyPosition || !user || !document) return;
 
     try {
-      const { error } = await supabase
-        .from('annotations')
-        .insert({
-          document_id: document.id,
-          author_id: user.id,
-          type: 'sticky_note',
-          page_number: currentPage,
-          content: {
-            text: stickyContent.trim(),
-            color: stickyColor
-          },
-          sequence_number: nextSequenceNumber
-        })
+      const response = await fetch("/api/annotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId: document.id,
+          pageNumber: currentPage,
+          annotationType: "sticky_note",
+          content: { text: stickyContent.trim(), color: stickyColor },
+          sequenceNumber: nextSequenceNumber,
+          positionX: stickyPosition.x,
+          positionY: stickyPosition.y,
+        }),
+      });
 
-      if (error) throw error
-
-      // Log activity
-      await supabase
-        .from('activity_logs')
-        .insert({
-          document_id: document.id,
-          user_id: user.id,
-          action: 'annotation_added'
-        })
-
-      setStickyContent('')
-      setShowStickyForm(false)
-      setStickyPosition(null)
-      setSelectedTool('view')
-      fetchAnnotations()
-    } catch (err) {
-      console.error('Error saving sticky note:', err)
-      setError('Failed to save annotation')
+      if (response.ok) {
+        toast.success("Sticky note added successfully");
+        setStickyContent("");
+        setShowStickyForm(false);
+        setStickyPosition(null);
+        setSelectedTool("view");
+        fetchAnnotations();
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save annotation");
+      }
+    } catch (error) {
+      console.error("Save annotation error:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save annotation"
+      );
     }
-  }
+  };
 
   const saveDrawing = async () => {
-    if (!canvas || !user || !document) return
+    if (!canvas || !user || !document) return;
 
-    const drawingData = canvas.toJSON()
+    const drawingData = canvas.toJSON();
 
     try {
-      const { error } = await supabase
-        .from('annotations')
-        .insert({
-          document_id: document.id,
-          author_id: user.id,
-          type: 'drawing',
-          page_number: currentPage,
-          content: {
-            drawing: drawingData,
-            color: drawingColor
-          },
-          sequence_number: nextSequenceNumber
-        })
+      const response = await fetch("/api/annotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId: document.id,
+          pageNumber: currentPage,
+          annotationType: "drawing",
+          content: { drawing: drawingData, color: drawingColor },
+          sequenceNumber: nextSequenceNumber,
+          positionX: 0,
+          positionY: 0,
+        }),
+      });
 
-      if (error) throw error
-
-      // Log activity
-      await supabase
-        .from('activity_logs')
-        .insert({
-          document_id: document.id,
-          user_id: user.id,
-          action: 'annotation_added'
-        })
-
-      canvas.clear()
-      setSelectedTool('view')
-      fetchAnnotations()
-    } catch (err) {
-      console.error('Error saving drawing:', err)
-      setError('Failed to save drawing')
+      if (response.ok) {
+        toast.success("Drawing saved successfully");
+        canvas.clear();
+        setSelectedTool("view");
+        fetchAnnotations();
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save drawing");
+      }
+    } catch (error) {
+      console.error("Save drawing error:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save drawing"
+      );
     }
-  }
+  };
 
   const exportPDF = async () => {
-    if (!document || !pageRef.current) return
+    if (!document || !pageRef.current) return;
 
     try {
       const canvas = await html2canvas(pageRef.current, {
         scale: 2,
         useCORS: true,
-        allowTaint: true
-      })
+        allowTaint: true,
+      });
 
-      const imgData = canvas.toDataURL('image/png')
+      const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
 
-      const imgWidth = 210
-      const pageHeight = 295
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      let heightLeft = imgHeight
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
 
-      let position = 0
+      let position = 0;
 
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
 
       while (heightLeft >= 0) {
-        position = heightLeft - imgHeight
-        pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
       }
 
-      pdf.save(`${document.original_name}_annotated.pdf`)
-    } catch (err) {
-      console.error('Error exporting PDF:', err)
-      setError('Failed to export PDF')
+      pdf.save(`${document.title}_annotated.pdf`);
+      toast.success("PDF exported successfully");
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error("Failed to export PDF");
     }
-  }
+  };
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages)
-  }
+    setNumPages(numPages);
+  };
 
-  const getUserDisplayName = (user: any) => {
-    return user?.raw_user_meta_data?.name || user?.email?.split('@')[0] || 'Unknown'
-  }
+  const formatFileSize = (bytes: number) => {
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    if (bytes === 0) return "0 Bytes";
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i];
+  };
 
   if (loading) {
     return (
@@ -342,17 +324,20 @@ export default function DocumentViewerPage() {
           <p className="text-gray-600">Loading document...</p>
         </div>
       </div>
-    )
+    );
   }
 
-  if (error || !document) {
+  if (!document) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Alert variant="destructive" className="max-w-md">
-          <AlertDescription>{error || 'Document not found'}</AlertDescription>
-        </Alert>
+        <div className="text-center">
+          <p className="text-gray-600">Document not found</p>
+          <Button onClick={() => router.push("/documents")} className="mt-4">
+            Back to Documents
+          </Button>
+        </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -362,15 +347,18 @@ export default function DocumentViewerPage() {
         {/* Header */}
         <div className="bg-white border-b p-4 flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <Button variant="outline" onClick={() => router.push('/documents')}>
+            <Button variant="outline" onClick={() => router.push("/documents")}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Documents
             </Button>
             <div>
-              <h1 className="text-xl font-semibold text-gray-900">{document.original_name}</h1>
+              <h1 className="text-xl font-semibold text-gray-900">
+                {document.title}
+              </h1>
               <p className="text-sm text-gray-600">
-                Uploaded by {getUserDisplayName(document.uploader)} on{' '}
-                {format(new Date(document.created_at), 'MMM dd, yyyy')}
+                Uploaded by {document.uploader_name} on{" "}
+                {format(new Date(document.created_at), "MMM dd, yyyy")} •{" "}
+                {formatFileSize(document.file_size)}
               </p>
             </div>
           </div>
@@ -380,7 +368,7 @@ export default function DocumentViewerPage() {
             <Popover>
               <PopoverTrigger asChild>
                 <Button
-                  variant={selectedTool === 'sticky' ? 'default' : 'outline'}
+                  variant={selectedTool === "sticky" ? "default" : "outline"}
                   size="sm"
                 >
                   <StickyNote className="h-4 w-4 mr-1" />
@@ -397,10 +385,12 @@ export default function DocumentViewerPage() {
                     </div>
                   </div>
                   <Button
-                    onClick={() => setSelectedTool(selectedTool === 'sticky' ? 'view' : 'sticky')}
+                    onClick={() =>
+                      setSelectedTool(selectedTool === "sticky" ? "view" : "sticky")
+                    }
                     className="w-full"
                   >
-                    {selectedTool === 'sticky' ? 'Disable' : 'Enable'} Sticky Notes
+                    {selectedTool === "sticky" ? "Disable" : "Enable"} Sticky Notes
                   </Button>
                 </div>
               </PopoverContent>
@@ -410,7 +400,7 @@ export default function DocumentViewerPage() {
             <Popover>
               <PopoverTrigger asChild>
                 <Button
-                  variant={selectedTool === 'draw' ? 'default' : 'outline'}
+                  variant={selectedTool === "draw" ? "default" : "outline"}
                   size="sm"
                 >
                   <Pen className="h-4 w-4 mr-1" />
@@ -427,16 +417,18 @@ export default function DocumentViewerPage() {
                     </div>
                   </div>
                   <Button
-                    onClick={() => setSelectedTool(selectedTool === 'draw' ? 'view' : 'draw')}
+                    onClick={() =>
+                      setSelectedTool(selectedTool === "draw" ? "view" : "draw")
+                    }
                     className="w-full"
                   >
-                    {selectedTool === 'draw' ? 'Disable' : 'Enable'} Drawing
+                    {selectedTool === "draw" ? "Disable" : "Enable"} Drawing
                   </Button>
                 </div>
               </PopoverContent>
             </Popover>
 
-            {selectedTool === 'draw' && canvas && (
+            {selectedTool === "draw" && canvas && (
               <Button size="sm" onClick={saveDrawing}>
                 <Save className="h-4 w-4 mr-1" />
                 Save Drawing
@@ -456,7 +448,7 @@ export default function DocumentViewerPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
               disabled={currentPage <= 1}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -467,7 +459,9 @@ export default function DocumentViewerPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(numPages, prev + 1))}
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(numPages, prev + 1))
+              }
               disabled={currentPage >= numPages}
             >
               <ChevronRight className="h-4 w-4" />
@@ -478,7 +472,7 @@ export default function DocumentViewerPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setScale(prev => Math.max(0.5, prev - 0.1))}
+              onClick={() => setScale((prev) => Math.max(0.5, prev - 0.1))}
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
@@ -486,7 +480,7 @@ export default function DocumentViewerPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setScale(prev => Math.min(2.0, prev + 0.1))}
+              onClick={() => setScale((prev) => Math.min(2.0, prev + 0.1))}
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
@@ -501,7 +495,7 @@ export default function DocumentViewerPage() {
               className="relative inline-block bg-white shadow-lg"
               onClick={handlePageClick}
               style={{
-                cursor: selectedTool === 'sticky' ? 'crosshair' : 'default'
+                cursor: selectedTool === "sticky" ? "crosshair" : "default",
               }}
             >
               <Document
@@ -517,30 +511,30 @@ export default function DocumentViewerPage() {
               </Document>
 
               {/* Drawing Canvas Overlay */}
-              {selectedTool === 'draw' && (
+              {selectedTool === "draw" && (
                 <canvas
                   ref={canvasRef}
                   className="absolute top-0 left-0 pointer-events-auto"
                   style={{
-                    width: '100%',
-                    height: '100%',
-                    zIndex: 10
+                    width: "100%",
+                    height: "100%",
+                    zIndex: 10,
                   }}
                 />
               )}
 
               {/* Sticky Note Annotations */}
               {annotations
-                .filter(a => a.type === 'sticky_note')
+                .filter((a) => a.annotation_type === "sticky_note")
                 .map((annotation) => (
                   <div
                     key={annotation.id}
                     className="absolute border border-gray-400 rounded p-2 shadow-md max-w-48"
                     style={{
-                      left: `${annotation.content.x || 0}%`,
-                      top: `${annotation.content.y || 0}%`,
-                      backgroundColor: annotation.content.color || '#fef08a',
-                      zIndex: 20
+                      left: `${annotation.position_x}%`,
+                      top: `${annotation.position_y}%`,
+                      backgroundColor: annotation.content.color || "#fef08a",
+                      zIndex: 20,
                     }}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -548,7 +542,7 @@ export default function DocumentViewerPage() {
                         #{annotation.sequence_number}
                       </Badge>
                       <span className="text-xs text-gray-600">
-                        {getUserDisplayName(annotation.author)}
+                        {annotation.user_name}
                       </span>
                     </div>
                     <p className="text-sm">{annotation.content.text}</p>
@@ -563,7 +557,7 @@ export default function DocumentViewerPage() {
                     left: `${stickyPosition.x}%`,
                     top: `${stickyPosition.y}%`,
                     backgroundColor: stickyColor,
-                    minWidth: '200px'
+                    minWidth: "200px",
                   }}
                 >
                   <div className="mb-2">
@@ -586,10 +580,10 @@ export default function DocumentViewerPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setShowStickyForm(false)
-                        setStickyPosition(null)
-                        setStickyContent('')
-                        setSelectedTool('view')
+                        setShowStickyForm(false);
+                        setStickyPosition(null);
+                        setStickyContent("");
+                        setSelectedTool("view");
                       }}
                     >
                       Cancel
@@ -602,17 +596,56 @@ export default function DocumentViewerPage() {
         </div>
       </div>
 
-      {/* Annotations Sidebar */}
-      <div className="w-80 bg-white border-l">
+      {/* Document Info & Annotations Sidebar */}
+      <div className="w-80 bg-white border-l flex flex-col">
+        {/* Document Info */}
         <div className="p-4 border-b">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Annotations
-          </h3>
+          <h3 className="font-semibold text-gray-900 mb-3">Document Info</h3>
+          <div className="space-y-2 text-sm">
+            <div>
+              <span className="font-medium">Status:</span>
+              <Badge className="ml-2 text-xs">{document.status}</Badge>
+            </div>
+            <div>
+              <span className="font-medium">Created:</span>
+              <span className="ml-2">
+                {format(new Date(document.created_at), "MMM dd, yyyy")}
+              </span>
+            </div>
+          </div>
+
+          {/* Assignments */}
+          {document.assignments && document.assignments.length > 0 && (
+            <div className="mt-4">
+              <h4 className="font-medium text-sm mb-2">Assigned to:</h4>
+              <div className="space-y-1">
+                {document.assignments.map((assignment, index) => (
+                  <div key={index} className="flex items-center gap-2 text-sm">
+                    {assignment.assigned_to_user ? (
+                      <>
+                        <User className="h-3 w-3" />
+                        <span>{assignment.assigned_user_name}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="h-3 w-3" />
+                        <span>{assignment.assigned_department_name}</span>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Annotations */}
+        <div className="p-4 border-b">
+          <h3 className="font-semibold text-gray-900">Annotations</h3>
           <p className="text-sm text-gray-600">Page {currentPage} annotations</p>
         </div>
 
-        <ScrollArea className="h-full">
+        <ScrollArea className="flex-1">
           <div className="p-4 space-y-3">
             {annotations.length === 0 ? (
               <div className="text-center py-8">
@@ -630,15 +663,17 @@ export default function DocumentViewerPage() {
                       #{annotation.sequence_number}
                     </Badge>
                     <Badge variant="secondary" className="text-xs">
-                      {annotation.type === 'sticky_note' ? 'Note' : 'Drawing'}
+                      {annotation.annotation_type === "sticky_note" ? "Note" : "Drawing"}
                     </Badge>
                   </div>
-                  {annotation.type === 'sticky_note' && (
+                  {annotation.annotation_type === "sticky_note" && (
                     <p className="text-sm mb-2">{annotation.content.text}</p>
                   )}
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>by {getUserDisplayName(annotation.author)}</span>
-                    <span>{format(new Date(annotation.created_at), 'MMM dd, HH:mm')}</span>
+                    <span>by {annotation.user_name}</span>
+                    <span>
+                      {format(new Date(annotation.created_at), "MMM dd, HH:mm")}
+                    </span>
                   </div>
                 </Card>
               ))
@@ -647,5 +682,5 @@ export default function DocumentViewerPage() {
         </ScrollArea>
       </div>
     </div>
-  )
+  );
 }
