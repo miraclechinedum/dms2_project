@@ -268,7 +268,6 @@ export default function DocumentsPage() {
           </div>
         </ScrollArea>
       </div>
-        </div>
       </main>
     </div>
   );
