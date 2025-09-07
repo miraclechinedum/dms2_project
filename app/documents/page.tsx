@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { Sidebar } from "@/components/layout/sidebar";
 import {
   Card,
   CardContent,
@@ -129,8 +130,10 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="flex h-screen bg-gray-50">
+      <Sidebar />
+      <main className="flex-1 overflow-auto p-6">
+        <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-3xl font-bold text-gray-900">Documents</h2>
@@ -265,6 +268,8 @@ export default function DocumentsPage() {
           </div>
         </ScrollArea>
       </div>
+        </div>
+      </main>
     </div>
   );
 }

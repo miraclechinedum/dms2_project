@@ -44,45 +44,23 @@ export async function POST(request: NextRequest) {
     // Save to database
     const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const sql = `
-      INSERT INTO documents (id, title, file_path, file_size, mime_type, uploaded_by, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
+      INSERT INTO documents (id, title, file_url, file_size, uploaded_by, assigned_to_user, assigned_to_department, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
     `;
+
+    const assignedToUser = assignmentType === 'user' && assignedUsers.length > 0 ? assignedUsers[0] : null;
+    const assignedToDepartment = assignmentType === 'department' && assignedDepartments.length > 0 ? assignedDepartments[0] : null;
 
     await DatabaseService.query(sql, [
       documentId,
       title,
       `/uploads/documents/${fileName}`,
       file.size,
-      file.type,
-      decoded.userId
+      decoded.userId,
+      assignedToUser,
+      assignedToDepartment
     ]);
 
-    // Create document assignments
-    if (assignmentType === 'user' && assignedUsers.length > 0) {
-      for (const userId of assignedUsers) {
-        const assignmentSql = `
-          INSERT INTO document_assignments (id, document_id, assigned_to_user, created_at)
-          VALUES (?, ?, ?, NOW())
-        `;
-        await DatabaseService.query(assignmentSql, [
-          `assign_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          documentId,
-          userId
-        ]);
-      }
-    } else if (assignmentType === 'department' && assignedDepartments.length > 0) {
-      for (const deptId of assignedDepartments) {
-        const assignmentSql = `
-          INSERT INTO document_assignments (id, document_id, assigned_to_department, created_at)
-          VALUES (?, ?, ?, NOW())
-        `;
-        await DatabaseService.query(assignmentSql, [
-          `assign_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          documentId,
-          deptId
-        ]);
-      }
-    }
     // Log activity
     const activitySql = `
       INSERT INTO activity_logs (id, document_id, user_id, action, details)
