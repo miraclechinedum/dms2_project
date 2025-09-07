@@ -41,21 +41,25 @@ export async function POST(request: NextRequest) {
     
     await writeFile(filePath, buffer);
 
-    // Save to database
+    // Generate document ID
     const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const sql = `
-      INSERT INTO documents (id, title, file_url, file_size, uploaded_by, assigned_to_user, assigned_to_department, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
-    `;
 
+    // Determine assignment based on type
     const assignedToUser = assignmentType === 'user' && assignedUsers.length > 0 ? assignedUsers[0] : null;
     const assignedToDepartment = assignmentType === 'department' && assignedDepartments.length > 0 ? assignedDepartments[0] : null;
+
+    // Insert document into database using your actual column names
+    const sql = `
+      INSERT INTO documents (id, title, file_path, file_size, mime_type, uploaded_by, assigned_to_user, assigned_to_department, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
+    `;
 
     await DatabaseService.query(sql, [
       documentId,
       title,
       `/uploads/documents/${fileName}`,
       file.size,
+      file.type,
       decoded.userId,
       assignedToUser,
       assignedToDepartment

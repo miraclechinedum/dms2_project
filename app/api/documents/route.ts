@@ -15,12 +15,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Get documents with uploader and assignment info
+    // Get documents with uploader and assignment info using your actual column names
     const sql = `
       SELECT 
         d.*,
-        u1.full_name as uploader_name,
-        u2.full_name as assigned_user_name,
+        u1.name as uploader_name,
+        u2.name as assigned_user_name,
         dept.name as assigned_department_name
       FROM documents d
       LEFT JOIN users u1 ON d.uploaded_by = u1.id

@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     }
 
     const sql = 'SELECT id, name, email, department_id, role FROM users ORDER BY name';
+    const sql = 'SELECT id, full_name as name, email, department_id, role FROM users ORDER BY full_name';
     const users = await DatabaseService.query(sql);
 
     return NextResponse.json({ users });

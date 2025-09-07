@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const sql = `
       SELECT 
         al.*,
-        u.full_name as user_name,
+        u.name as user_name,
         d.title as document_title
       FROM activity_logs al
       LEFT JOIN users u ON al.user_id = u.id

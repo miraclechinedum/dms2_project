@@ -17,13 +17,17 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Get document details
+    // Get document details using your actual column names
     const documentSql = `
       SELECT 
         d.*,
-        u.name as uploader_name
+        u1.full_name as uploader_name,
+        u2.full_name as assigned_user_name,
+        dept.name as assigned_department_name
       FROM documents d
-      LEFT JOIN users u ON d.uploaded_by = u.id
+      LEFT JOIN users u1 ON d.uploaded_by = u1.id
+      LEFT JOIN users u2 ON d.assigned_to_user = u2.id
+      LEFT JOIN departments dept ON d.assigned_to_department = dept.id
       WHERE d.id = ?
     `;
 
@@ -35,22 +39,8 @@ export async function GET(
 
     const document = documents[0];
 
-    // Get assignments
-    const assignmentsSql = `
-      SELECT 
-        da.*,
-        u.name as assigned_user_name,
-        dept.name as assigned_department_name
-      FROM document_assignments da
-      LEFT JOIN users u ON da.assigned_to_user = u.id
-      LEFT JOIN departments dept ON da.assigned_to_department = dept.id
-      WHERE da.document_id = ?
-    `;
-    
-    const assignments = await DatabaseService.query(assignmentsSql, [params.id]);
-
     return NextResponse.json({ 
-      document: { ...document, assignments }
+      document
     });
 
   } catch (error) {
