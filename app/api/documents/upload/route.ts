@@ -65,7 +65,11 @@ export async function POST(request: NextRequest) {
       cloudinaryResult = await CloudinaryService.uploadFile(
         buffer,
         file.name,
-        'documents' // Cloudinary folder
+        'documents', // Cloudinary folder
+        {
+          resource_type: 'raw', // Important for PDF files
+          format: 'pdf',
+        }
       );
       console.log("✅ Cloudinary upload successful:", {
         public_id: cloudinaryResult.public_id,

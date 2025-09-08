@@ -23,15 +23,17 @@ export class CloudinaryService {
   static async uploadFile(
     buffer: Buffer,
     originalName: string,
-    folder: string = 'documents'
+    folder: string = 'documents',
+    options: any = {}
   ): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       const uploadOptions = {
         folder: folder,
-        resource_type: 'auto' as const,
+        resource_type: options.resource_type || 'raw', // Use 'raw' for PDFs
         public_id: `${Date.now()}-${originalName.replace(/\.[^/.]+$/, "")}`, // Remove extension, Cloudinary will add it
         use_filename: true,
         unique_filename: true,
+        ...options,
       };
 
       cloudinary.uploader.upload_stream(
@@ -88,16 +90,26 @@ export class CloudinaryService {
   /**
    * Generate a signed URL for secure document access
    */
-  static getSignedUrl(publicId: string, expiresIn: number = 3600): string {
-    const timestamp = Math.round(Date.now() / 1000) + expiresIn;
+  static getSignedUrl(publicId: string, expiresIn: number = 86400): string {
+    // 24 hours expiry for document access
+    const timestamp = Math.round(Date.now() / 1000);
     
     return cloudinary.url(publicId, {
       secure: true,
       sign_url: true,
-      auth_token: {
-        duration: expiresIn,
-        start_time: Math.round(Date.now() / 1000),
-      },
+      expires_at: timestamp + expiresIn,
+    });
+  }
+
+  /**
+   * Get a public URL that works with PDF viewers
+   */
+  static getPublicPdfUrl(publicId: string): string {
+    return cloudinary.url(publicId, {
+      secure: true,
+      resource_type: 'raw', // Important for PDF files
+      type: 'upload',
+      flags: 'attachment', // This helps with PDF viewing
     });
   }
 }

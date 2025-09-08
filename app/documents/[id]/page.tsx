@@ -314,6 +314,13 @@ export default function DocumentViewerPage() {
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
+    console.log("✅ PDF loaded successfully with", numPages, "pages");
+  };
+
+  const onDocumentLoadError = (error: any) => {
+    console.error("❌ PDF load error:", error);
+    console.log("📄 Attempted to load:", document?.file_path);
+    toast.error("Failed to load PDF. Please try refreshing the page.");
   };
 
   const formatFileSize = (bytes: number) => {
@@ -524,32 +531,57 @@ export default function DocumentViewerPage() {
                 cursor: selectedTool === "sticky" ? "crosshair" : "default",
               }}
             >
-              <Document
-                file={document.file_path}
-                onLoadSuccess={onDocumentLoadSuccess}
-                className="pdf-document"
-                loading={
-                  <div className="flex items-center justify-center p-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  </div>
-                }
-                error={
-                  <div className="flex items-center justify-center p-8 text-red-600">
-                    <p>Failed to load PDF. Please check the file path.</p>
-                  </div>
-                }
-              >
-                <Page
-                  pageNumber={currentPage}
-                  scale={scale}
-                  className="pdf-page"
+              {document.file_path ? (
+                <Document
+                  file={{
+                    url: document.file_path,
+                    httpHeaders: {
+                      'Access-Control-Allow-Origin': '*',
+                    },
+                    withCredentials: false,
+                  }}
+                  onLoadSuccess={onDocumentLoadSuccess}
+                  onLoadError={onDocumentLoadError}
+                  className="pdf-document"
+                  options={{
+                    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
+                    cMapPacked: true,
+                    standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/',
+                  }}
                   loading={
-                    <div className="flex items-center justify-center p-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <div className="flex items-center justify-center p-8">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                        <p className="text-sm text-gray-600">Loading PDF...</p>
+                      </div>
                     </div>
                   }
-                />
-              </Document>
+                  error={
+                    <div className="flex items-center justify-center p-8 text-red-600">
+                      <div className="text-center">
+                        <p className="font-medium">Failed to load PDF</p>
+                        <p className="text-sm mt-1">Please check the file path or try refreshing</p>
+                        <p className="text-xs mt-2 text-gray-500">URL: {document.file_path}</p>
+                      </div>
+                    </div>
+                  }
+                >
+                  <Page
+                    pageNumber={currentPage}
+                    scale={scale}
+                    className="pdf-page"
+                    loading={
+                      <div className="flex items-center justify-center p-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      </div>
+                    }
+                  />
+                </Document>
+              ) : (
+                <div className="flex items-center justify-center p-8 text-red-600">
+                  <p>No file path available for this document</p>
+                </div>
+              )}
 
               {/* Drawing Canvas Overlay */}
               {selectedTool === "draw" && (

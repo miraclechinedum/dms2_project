@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DatabaseService } from "@/lib/database";
 import { AuthService } from "@/lib/auth";
+import { CloudinaryService } from "@/lib/cloudinary";
 
 export async function GET(
   request: NextRequest,
@@ -69,7 +70,18 @@ export async function GET(
 
     // 3) The file_path is now a Cloudinary URL, so we can use it directly
     const filePath = docRow.file_path || "";
-    const fileUrl = filePath; // Cloudinary URLs are already absolute
+    
+    // Generate a proper PDF viewing URL from Cloudinary
+    let fileUrl = filePath;
+    if (filePath.includes('cloudinary.com')) {
+      // Extract public_id from Cloudinary URL and generate proper PDF URL
+      const publicIdMatch = filePath.match(/\/([^\/]+)\.(pdf|PDF)$/);
+      if (publicIdMatch) {
+        const publicId = `documents/${publicIdMatch[1]}`;
+        fileUrl = CloudinaryService.getPublicPdfUrl(publicId);
+        console.log("🔗 Generated PDF URL:", fileUrl);
+      }
+    }
 
     // 4) Shape the response document object for the client
     const document = {

@@ -1,12 +1,27 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Remove the webpack configuration that's causing the error
-  // Next.js should handle most dependencies automatically
+  images: {
+    domains: ['res.cloudinary.com'],
+  },
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+        ],
+      },
+    ];
+  },
   webpack: (config) => {
-    // Only add fallbacks if absolutely necessary
+    // Add fallbacks for Node.js modules
     config.resolve.fallback = {
       ...config.resolve.fallback,
-      // Add any necessary fallbacks here
+      fs: false,
+      net: false,
+      tls: false,
     };
     return config;
   },
