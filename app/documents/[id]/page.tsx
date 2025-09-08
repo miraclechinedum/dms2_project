@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { Sidebar } from "@/components/layout/sidebar";
 import { Document, Page, pdfjs } from "react-pdf";
 import { fabric } from "fabric";
 import { HexColorPicker } from "react-colorful";
@@ -137,12 +138,18 @@ export default function DocumentViewerPage() {
   }, [canvas, drawingColor]);
 
   const fetchDocument = async () => {
+    console.log("Fetching document with ID:", params.id);
     try {
       const response = await fetch(`/api/documents/${params.id}`);
+      console.log("Document fetch response status:", response.status);
+      
       if (response.ok) {
         const { document } = await response.json();
+        console.log("Document data received:", document);
         setDocument(document);
       } else {
+        const errorText = await response.text();
+        console.error("Document fetch error:", response.status, errorText);
         toast.error("Document not found");
         router.push("/documents");
       }
@@ -318,31 +325,50 @@ export default function DocumentViewerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading document...</p>
-        </div>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading document...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-gray-600">Please sign in to view documents</p>
+          </div>
+        </main>
       </div>
     );
   }
 
   if (!document) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600">Document not found</p>
-          <Button onClick={() => router.push("/documents")} className="mt-4">
-            Back to Documents
-          </Button>
-        </div>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-gray-600">Document not found</p>
+            <Button onClick={() => router.push("/documents")} className="mt-4">
+              Back to Documents
+            </Button>
+          </div>
+        </main>
       </div>
     );
   }
 
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Main Content */}
+      <Sidebar />
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="bg-white border-b p-4 flex items-center justify-between">
@@ -502,11 +528,26 @@ export default function DocumentViewerPage() {
                 file={document.file_path}
                 onLoadSuccess={onDocumentLoadSuccess}
                 className="pdf-document"
+                loading={
+                  <div className="flex items-center justify-center p-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+                error={
+                  <div className="flex items-center justify-center p-8 text-red-600">
+                    <p>Failed to load PDF. Please check the file path.</p>
+                  </div>
+                }
               >
                 <Page
                   pageNumber={currentPage}
                   scale={scale}
                   className="pdf-page"
+                  loading={
+                    <div className="flex items-center justify-center p-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    </div>
+                  }
                 />
               </Document>
 
@@ -594,92 +635,92 @@ export default function DocumentViewerPage() {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Document Info & Annotations Sidebar */}
-      <div className="w-80 bg-white border-l flex flex-col">
-        {/* Document Info */}
-        <div className="p-4 border-b">
-          <h3 className="font-semibold text-gray-900 mb-3">Document Info</h3>
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="font-medium">Status:</span>
-              <Badge className="ml-2 text-xs">{document.status}</Badge>
-            </div>
-            <div>
-              <span className="font-medium">Created:</span>
-              <span className="ml-2">
-                {format(new Date(document.created_at), "MMM dd, yyyy")}
-              </span>
-            </div>
-          </div>
-
-          {/* Assignments */}
-          {document.assignments && document.assignments.length > 0 && (
-            <div className="mt-4">
-              <h4 className="font-medium text-sm mb-2">Assigned to:</h4>
-              <div className="space-y-1">
-                {document.assignments.map((assignment, index) => (
-                  <div key={index} className="flex items-center gap-2 text-sm">
-                    {assignment.assigned_to_user ? (
-                      <>
-                        <User className="h-3 w-3" />
-                        <span>{assignment.assigned_user_name}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Building2 className="h-3 w-3" />
-                        <span>{assignment.assigned_department_name}</span>
-                      </>
-                    )}
-                  </div>
-                ))}
+        {/* Document Info & Annotations Sidebar */}
+        <div className="w-80 bg-white border-l flex flex-col">
+          {/* Document Info */}
+          <div className="p-4 border-b">
+            <h3 className="font-semibold text-gray-900 mb-3">Document Info</h3>
+            <div className="space-y-2 text-sm">
+              <div>
+                <span className="font-medium">Status:</span>
+                <Badge className="ml-2 text-xs">{document.status}</Badge>
+              </div>
+              <div>
+                <span className="font-medium">Created:</span>
+                <span className="ml-2">
+                  {format(new Date(document.created_at), "MMM dd, yyyy")}
+                </span>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Annotations */}
-        <div className="p-4 border-b">
-          <h3 className="font-semibold text-gray-900">Annotations</h3>
-          <p className="text-sm text-gray-600">Page {currentPage} annotations</p>
-        </div>
-
-        <ScrollArea className="flex-1">
-          <div className="p-4 space-y-3">
-            {annotations.length === 0 ? (
-              <div className="text-center py-8">
-                <StickyNote className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">No annotations on this page</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Use the tools above to add sticky notes or drawings
-                </p>
+            {/* Assignments */}
+            {document.assignments && document.assignments.length > 0 && (
+              <div className="mt-4">
+                <h4 className="font-medium text-sm mb-2">Assigned to:</h4>
+                <div className="space-y-1">
+                  {document.assignments.map((assignment, index) => (
+                    <div key={index} className="flex items-center gap-2 text-sm">
+                      {assignment.assigned_to_user ? (
+                        <>
+                          <User className="h-3 w-3" />
+                          <span>{assignment.assigned_user_name}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Building2 className="h-3 w-3" />
+                          <span>{assignment.assigned_department_name}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            ) : (
-              annotations.map((annotation) => (
-                <Card key={annotation.id} className="p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <Badge variant="outline" className="text-xs">
-                      #{annotation.sequence_number}
-                    </Badge>
-                    <Badge variant="secondary" className="text-xs">
-                      {annotation.annotation_type === "sticky_note" ? "Note" : "Drawing"}
-                    </Badge>
-                  </div>
-                  {annotation.annotation_type === "sticky_note" && (
-                    <p className="text-sm mb-2">{annotation.content.text}</p>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>by {annotation.user_name}</span>
-                    <span>
-                      {format(new Date(annotation.created_at), "MMM dd, HH:mm")}
-                    </span>
-                  </div>
-                </Card>
-              ))
             )}
           </div>
-        </ScrollArea>
+
+          {/* Annotations */}
+          <div className="p-4 border-b">
+            <h3 className="font-semibold text-gray-900">Annotations</h3>
+            <p className="text-sm text-gray-600">Page {currentPage} annotations</p>
+          </div>
+
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-3">
+              {annotations.length === 0 ? (
+                <div className="text-center py-8">
+                  <StickyNote className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">No annotations on this page</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use the tools above to add sticky notes or drawings
+                  </p>
+                </div>
+              ) : (
+                annotations.map((annotation) => (
+                  <Card key={annotation.id} className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge variant="outline" className="text-xs">
+                        #{annotation.sequence_number}
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        {annotation.annotation_type === "sticky_note" ? "Note" : "Drawing"}
+                      </Badge>
+                    </div>
+                    {annotation.annotation_type === "sticky_note" && (
+                      <p className="text-sm mb-2">{annotation.content.text}</p>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>by {annotation.user_name}</span>
+                      <span>
+                        {format(new Date(annotation.created_at), "MMM dd, HH:mm")}
+                      </span>
+                    </div>
+                  </Card>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </div>
       </div>
     </div>
   );

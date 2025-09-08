@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     const sql = `
-      SELECT a.*, u.full_name as user_name
+      SELECT a.*, u.name as user_name
       FROM annotations a
       JOIN users u ON a.user_id = u.id
       WHERE a.document_id = ? AND a.page_number = ?

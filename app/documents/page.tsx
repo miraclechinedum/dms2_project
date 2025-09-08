@@ -4,6 +4,17 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Card,
   CardContent,
@@ -18,12 +29,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, Search, Filter, Eye, Upload, User, Building2 } from "lucide-react";
+import { FileText, Search, Eye, Upload, User, Building2 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "react-hot-toast";
 
 interface Assignment {
   id: string;
@@ -75,9 +83,12 @@ export default function DocumentsPage() {
       if (response.ok) {
         const { documents } = await response.json();
         setDocuments(documents);
+      } else {
+        toast.error("Failed to fetch documents");
       }
     } catch (error) {
       console.error("Failed to fetch documents:", error);
+      toast.error("Failed to fetch documents");
     }
     setLoading(false);
   };
@@ -120,11 +131,14 @@ export default function DocumentsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading documents...</p>
-        </div>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading documents...</p>
+          </div>
+        </main>
       </div>
     );
   }
@@ -133,141 +147,148 @@ export default function DocumentsPage() {
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
       <main className="flex-1 overflow-auto p-6">
-        <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900">Documents</h2>
-            <p className="text-gray-600">Manage and view your PDF documents</p>
-          </div>
-          <Button onClick={() => router.push("/upload")}>
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Document
-          </Button>
-        </div>
-
-        {/* Search and Filter */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Search documents..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900">Documents</h2>
+              <p className="text-gray-600">Manage and view your PDF documents</p>
             </div>
-          </CardContent>
-        </Card>
+            <Button onClick={() => router.push("/upload")}>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Document
+            </Button>
+          </div>
 
-        {/* Documents Grid */}
-        <ScrollArea className="h-[600px]">
-          <div className="grid gap-4">
-            {filteredDocuments.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
+          {/* Search and Filter */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search documents..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Documents Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Documents ({filteredDocuments.length})</CardTitle>
+              <CardDescription>
+                List of all uploaded documents
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {filteredDocuments.length === 0 ? (
+                <div className="text-center py-12">
                   <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-600">No documents found</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-500 mb-4">
                     Upload your first document to get started
                   </p>
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => router.push("/upload")}
-                  >
+                  <Button onClick={() => router.push("/upload")}>
                     <Upload className="h-4 w-4 mr-2" />
                     Upload Document
                   </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              filteredDocuments.map((document) => (
-                <Card
-                  key={document.id}
-                  className="hover:shadow-md transition-shadow"
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="h-5 w-5 text-blue-600" />
-                          <h3 className="font-semibold text-gray-900">
-                            {document.title}
-                          </h3>
-                          <Badge className={getStatusColor(document.status)}>
-                            {document.status}
-                          </Badge>
-                        </div>
-
-                        <div className="text-sm text-gray-600 space-y-1">
-                          <p>Uploaded by: {document.uploader_name}</p>
-                          <p>Size: {formatFileSize(document.file_size)}</p>
-                          <p>
-                            Created:{" "}
-                            {format(
-                              new Date(document.created_at),
-                              "MMM dd, yyyy"
-                            )}
-                          </p>
-                        </div>
-
-                        {/* Assignments */}
-                        {document.assignments && document.assignments.length > 0 && (
-                          <div className="mt-3">
-                            <p className="text-sm font-medium text-gray-700 mb-2">
-                              Assigned to:
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {document.assignments.map((assignment, index) => (
-                                <Badge key={index} variant="outline" className="text-xs">
-                                  {assignment.assigned_to_user ? (
-                                    <div className="flex items-center gap-1">
-                                      <User className="h-3 w-3" />
-                                      {assignment.assigned_user_name}
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center gap-1">
-                                      <Building2 className="h-3 w-3" />
-                                      {assignment.assigned_department_name}
-                                    </div>
-                                  )}
-                                </Badge>
-                              ))}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">S/N</TableHead>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Uploaded By</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Assigned To</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead className="w-24">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredDocuments.map((document, index) => (
+                        <TableRow key={document.id}>
+                          <TableCell className="font-medium">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-blue-600" />
+                              <span className="font-medium">{document.title}</span>
                             </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <Button
-                        onClick={() => router.push(`/documents/${document.id}`)}
-                        className="ml-4"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </ScrollArea>
-      </div>
+                          </TableCell>
+                          <TableCell>{document.uploader_name}</TableCell>
+                          <TableCell>{formatFileSize(document.file_size)}</TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(document.status)}>
+                              {document.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {document.assignments && document.assignments.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {document.assignments.map((assignment, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs">
+                                    {assignment.assigned_to_user ? (
+                                      <div className="flex items-center gap-1">
+                                        <User className="h-3 w-3" />
+                                        {assignment.assigned_user_name}
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1">
+                                        <Building2 className="h-3 w-3" />
+                                        {assignment.assigned_department_name}
+                                      </div>
+                                    )}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(document.created_at), "MMM dd, yyyy")}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              onClick={() => router.push(`/documents/${document.id}`)}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </main>
     </div>
   );
