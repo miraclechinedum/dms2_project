@@ -67,18 +67,9 @@ export async function GET(
 
     console.log("Found document:", docRow.title ?? docRow.id);
 
-    // 3) Build an absolute URL for the file so the browser (react-pdf) can fetch it
-    // Prefer request.nextUrl.origin when available (Next.js runtime), fallback to host header.
-    const origin =
-      (request as any).nextUrl?.origin ||
-      `${request.headers.get("x-forwarded-proto") ?? "http"}://${request.headers.get("host")}`;
-
+    // 3) The file_path is now a Cloudinary URL, so we can use it directly
     const filePath = docRow.file_path || "";
-    // If filePath already looks absolute (starts with http) keep it, else join origin
-    const fileUrl =
-      filePath.startsWith("http://") || filePath.startsWith("https://")
-        ? filePath
-        : `${origin}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
+    const fileUrl = filePath; // Cloudinary URLs are already absolute
 
     // 4) Shape the response document object for the client
     const document = {

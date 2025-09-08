@@ -201,6 +201,7 @@ export default function UploadPage() {
       );
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 

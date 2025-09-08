@@ -101,7 +101,8 @@ export async function GET(request: NextRequest) {
       return {
         id: r.id,
         title: r.title,
-        file_path: r.file_path,
+        file_path: r.file_path, // This is now the Cloudinary URL
+        file_url: r.file_path,  // Same as file_path since it's already a full URL
         file_size: typeof r.file_size === "number" ? r.file_size : Number(r.file_size ?? 0),
         uploaded_by: r.uploaded_by,
         uploader_name: r.uploader_name ?? null,
