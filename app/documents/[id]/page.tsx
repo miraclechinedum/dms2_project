@@ -12,11 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import {
   ChevronLeft,
@@ -86,15 +82,10 @@ export default function DocumentViewerPage() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [selectedTool, setSelectedTool] = useState<"view" | "sticky" | "draw">(
-    "view"
-  );
+  const [selectedTool, setSelectedTool] = useState<"view" | "sticky" | "draw">("view");
   const [showStickyForm, setShowStickyForm] = useState(false);
   const [stickyContent, setStickyContent] = useState("");
-  const [stickyPosition, setStickyPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
+  const [stickyPosition, setStickyPosition] = useState<{ x: number; y: number } | null>(null);
   const [stickyColor, setStickyColor] = useState("#fef08a"); // yellow-200
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
   const [drawingColor, setDrawingColor] = useState("#3b82f6"); // blue-600
@@ -151,7 +142,7 @@ export default function DocumentViewerPage() {
     try {
       const response = await fetch(`/api/documents/${params.id}`);
       console.log("Document fetch response status:", response.status);
-
+      
       if (response.ok) {
         const { document } = await response.json();
         console.log("Document data received:", document);
@@ -421,26 +412,18 @@ export default function DocumentViewerPage() {
                 <div className="space-y-3">
                   <h4 className="font-medium">Sticky Note Settings</h4>
                   <div>
-                    <label className="text-sm font-medium">
-                      Background Color
-                    </label>
+                    <label className="text-sm font-medium">Background Color</label>
                     <div className="mt-2">
-                      <HexColorPicker
-                        color={stickyColor}
-                        onChange={setStickyColor}
-                      />
+                      <HexColorPicker color={stickyColor} onChange={setStickyColor} />
                     </div>
                   </div>
                   <Button
                     onClick={() =>
-                      setSelectedTool(
-                        selectedTool === "sticky" ? "view" : "sticky"
-                      )
+                      setSelectedTool(selectedTool === "sticky" ? "view" : "sticky")
                     }
                     className="w-full"
                   >
-                    {selectedTool === "sticky" ? "Disable" : "Enable"} Sticky
-                    Notes
+                    {selectedTool === "sticky" ? "Disable" : "Enable"} Sticky Notes
                   </Button>
                 </div>
               </PopoverContent>
@@ -463,10 +446,7 @@ export default function DocumentViewerPage() {
                   <div>
                     <label className="text-sm font-medium">Pen Color</label>
                     <div className="mt-2">
-                      <HexColorPicker
-                        color={drawingColor}
-                        onChange={setDrawingColor}
-                      />
+                      <HexColorPicker color={drawingColor} onChange={setDrawingColor} />
                     </div>
                   </div>
                   <Button
@@ -529,9 +509,7 @@ export default function DocumentViewerPage() {
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
-            <span className="text-sm font-medium">
-              {Math.round(scale * 100)}%
-            </span>
+            <span className="text-sm font-medium">{Math.round(scale * 100)}%</span>
             <Button
               variant="outline"
               size="sm"
@@ -557,18 +535,21 @@ export default function DocumentViewerPage() {
                 <Document
                   file={{
                     url: document.file_path,
-                    httpHeaders: {
-                      'Access-Control-Allow-Origin': '*',
-                    },
-                    withCredentials: false,
+                    // Add headers to help with CORS and PDF loading
+                    httpHeaders: {},
+                    withCredentials: false
                   }}
                   onLoadSuccess={onDocumentLoadSuccess}
                   onLoadError={onDocumentLoadError}
                   className="pdf-document"
                   options={{
-                    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
+                    cMapUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
                     cMapPacked: true,
-                    standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/',
+                    standardFontDataUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
+                    // Disable worker for better compatibility
+                    disableWorker: false,
+                    // Enable CORS
+                    isEvalSupported: false,
                   }}
                   loading={
                     <div className="flex items-center justify-center p-8">
@@ -583,7 +564,14 @@ export default function DocumentViewerPage() {
                       <div className="text-center">
                         <p className="font-medium">Failed to load PDF</p>
                         <p className="text-sm mt-1">Please check the file path or try refreshing</p>
-                        <p className="text-xs mt-2 text-gray-500">URL: {document.file_path}</p>
+                        <p className="text-xs mt-2 text-gray-500">URL: {document.file_url}</p>
+                        <Button 
+                          onClick={() => window.open(document.file_url, '_blank')} 
+                          className="mt-2"
+                          size="sm"
+                        >
+                          Open PDF in New Tab
+                        </Button>
                       </div>
                     </div>
                   }
@@ -714,10 +702,7 @@ export default function DocumentViewerPage() {
                 <h4 className="font-medium text-sm mb-2">Assigned to:</h4>
                 <div className="space-y-1">
                   {document.assignments.map((assignment, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 text-sm"
-                    >
+                    <div key={index} className="flex items-center gap-2 text-sm">
                       {assignment.assigned_to_user ? (
                         <>
                           <User className="h-3 w-3" />
@@ -739,9 +724,7 @@ export default function DocumentViewerPage() {
           {/* Annotations */}
           <div className="p-4 border-b">
             <h3 className="font-semibold text-gray-900">Annotations</h3>
-            <p className="text-sm text-gray-600">
-              Page {currentPage} annotations
-            </p>
+            <p className="text-sm text-gray-600">Page {currentPage} annotations</p>
           </div>
 
           <ScrollArea className="flex-1">
@@ -749,9 +732,7 @@ export default function DocumentViewerPage() {
               {annotations.length === 0 ? (
                 <div className="text-center py-8">
                   <StickyNote className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">
-                    No annotations on this page
-                  </p>
+                  <p className="text-sm text-gray-600">No annotations on this page</p>
                   <p className="text-xs text-gray-500 mt-1">
                     Use the tools above to add sticky notes or drawings
                   </p>
@@ -764,9 +745,7 @@ export default function DocumentViewerPage() {
                         #{annotation.sequence_number}
                       </Badge>
                       <Badge variant="secondary" className="text-xs">
-                        {annotation.annotation_type === "sticky_note"
-                          ? "Note"
-                          : "Drawing"}
+                        {annotation.annotation_type === "sticky_note" ? "Note" : "Drawing"}
                       </Badge>
                     </div>
                     {annotation.annotation_type === "sticky_note" && (
@@ -775,10 +754,7 @@ export default function DocumentViewerPage() {
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <span>by {annotation.user_name}</span>
                       <span>
-                        {format(
-                          new Date(annotation.created_at),
-                          "MMM dd, HH:mm"
-                        )}
+                        {format(new Date(annotation.created_at), "MMM dd, HH:mm")}
                       </span>
                     </div>
                   </Card>
