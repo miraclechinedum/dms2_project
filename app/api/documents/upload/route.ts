@@ -58,18 +58,24 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Upload to Cloudinary
+    // Upload to Cloudinary with error handling
     console.log("☁️ Uploading to Cloudinary...");
-    const cloudinaryResult = await CloudinaryService.uploadFile(
-      buffer,
-      file.name,
-      'documents' // Cloudinary folder
-    );
-    console.log("✅ Cloudinary upload successful:", {
-      public_id: cloudinaryResult.public_id,
-      secure_url: cloudinaryResult.secure_url,
-      bytes: cloudinaryResult.bytes
-    });
+    let cloudinaryResult;
+    try {
+      cloudinaryResult = await CloudinaryService.uploadFile(
+        buffer,
+        file.name,
+        'documents' // Cloudinary folder
+      );
+      console.log("✅ Cloudinary upload successful:", {
+        public_id: cloudinaryResult.public_id,
+        secure_url: cloudinaryResult.secure_url,
+        bytes: cloudinaryResult.bytes
+      });
+    } catch (cloudinaryError) {
+      console.error("❌ Cloudinary upload failed:", cloudinaryError);
+      throw new Error(`Cloudinary upload failed: ${cloudinaryError.message}`);
+    }
 
     // Generate document ID
     const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
