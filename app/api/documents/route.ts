@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    console.log('Fetching documents for user:', decoded.userId);
+
     // Get documents with uploader and assignment info using your actual column names
     const sql = `
       SELECT 
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest) {
     `;
 
     const documents = await DatabaseService.query(sql);
+    console.log('Found documents:', documents.length);
 
     return NextResponse.json({ documents });
 

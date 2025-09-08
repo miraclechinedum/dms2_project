@@ -54,8 +54,8 @@ export class AuthService {
     const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const sql = `
-      INSERT INTO users (id, email, password_hash, name, department_id, role, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'member', NOW(), NOW())
+      INSERT INTO users (id, email, password_hash, name, department_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, NOW(), NOW())
     `;
     
     await DatabaseService.query(sql, [userId, email, hashedPassword, fullName, departmentId]);
@@ -65,7 +65,7 @@ export class AuthService {
 
   static async authenticateUser(email: string, password: string): Promise<{ user: User; token: string } | null> {
     const sql = `
-      SELECT u.*, d.name as department_name 
+      SELECT u.id, u.name, u.email, u.department_id, u.password_hash, u.created_at, u.updated_at, d.name as department_name 
       FROM users u 
       LEFT JOIN departments d ON u.department_id = d.id 
       WHERE u.email = ?
@@ -84,13 +84,14 @@ export class AuthService {
     
     // Remove password hash from response
     delete user.password_hash;
+    user.role = 'member'; // Add default role
     
     return { user, token };
   }
 
   static async getUserById(userId: string): Promise<User> {
     const sql = `
-      SELECT u.*, d.name as department_name 
+      SELECT u.id, u.name, u.email, u.department_id, 'member' as role, u.created_at, u.updated_at, d.name as department_name 
       FROM users u 
       LEFT JOIN departments d ON u.department_id = d.id 
       WHERE u.id = ?
@@ -107,7 +108,7 @@ export class AuthService {
 
   static async getUserByEmail(email: string): Promise<User | null> {
     const sql = `
-      SELECT u.*, d.name as department_name 
+      SELECT u.id, u.name, u.email, u.department_id, 'member' as role, u.created_at, u.updated_at, d.name as department_name 
       FROM users u 
       LEFT JOIN departments d ON u.department_id = d.id 
       WHERE u.email = ?

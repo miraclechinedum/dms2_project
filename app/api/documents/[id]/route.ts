@@ -17,12 +17,14 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    console.log('Fetching document:', params.id);
+
     // Get document details using your actual column names
     const documentSql = `
       SELECT 
         d.*,
-        u1.full_name as uploader_name,
-        u2.full_name as assigned_user_name,
+        u1.name as uploader_name,
+        u2.name as assigned_user_name,
         dept.name as assigned_department_name
       FROM documents d
       LEFT JOIN users u1 ON d.uploaded_by = u1.id
@@ -38,6 +40,7 @@ export async function GET(
     }
 
     const document = documents[0];
+    console.log('Found document:', document.title);
 
     return NextResponse.json({ 
       document

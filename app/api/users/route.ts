@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const sql = 'SELECT id, full_name as name, email, department_id, role FROM users ORDER BY full_name';
+    // Use 'name' column as it exists in your database
+    const sql = 'SELECT id, name, email, department_id FROM users ORDER BY name';
     const users = await DatabaseService.query(sql);
 
     return NextResponse.json({ users });
