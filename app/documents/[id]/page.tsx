@@ -558,7 +558,7 @@ export default function DocumentViewerPage() {
                   file={{
                     url: document.file_path,
                     httpHeaders: {
-                      "Access-Control-Allow-Origin": "*",
+                      'Access-Control-Allow-Origin': '*',
                     },
                     withCredentials: false,
                   }}
@@ -566,10 +566,9 @@ export default function DocumentViewerPage() {
                   onLoadError={onDocumentLoadError}
                   className="pdf-document"
                   options={{
-                    cMapUrl: "https://unpkg.com/pdfjs-dist@3.11.174/cmaps/",
+                    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
                     cMapPacked: true,
-                    standardFontDataUrl:
-                      "https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/",
+                    standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/',
                   }}
                   loading={
                     <div className="flex items-center justify-center p-8">
@@ -583,12 +582,8 @@ export default function DocumentViewerPage() {
                     <div className="flex items-center justify-center p-8 text-red-600">
                       <div className="text-center">
                         <p className="font-medium">Failed to load PDF</p>
-                        <p className="text-sm mt-1">
-                          Please check the file path or try refreshing
-                        </p>
-                        <p className="text-xs mt-2 text-gray-500">
-                          URL: {document.file_path}
-                        </p>
+                        <p className="text-sm mt-1">Please check the file path or try refreshing</p>
+                        <p className="text-xs mt-2 text-gray-500">URL: {document.file_path}</p>
                       </div>
                     </div>
                   }
