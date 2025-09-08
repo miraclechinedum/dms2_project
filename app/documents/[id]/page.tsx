@@ -535,18 +535,21 @@ export default function DocumentViewerPage() {
                 <Document
                   file={{
                     url: document.file_path,
-                    httpHeaders: {
-                      'Access-Control-Allow-Origin': '*',
-                    },
-                    withCredentials: false,
+                    // Add headers to help with CORS and PDF loading
+                    httpHeaders: {},
+                    withCredentials: false
                   }}
                   onLoadSuccess={onDocumentLoadSuccess}
                   onLoadError={onDocumentLoadError}
                   className="pdf-document"
                   options={{
-                    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
+                    cMapUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
                     cMapPacked: true,
-                    standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/',
+                    standardFontDataUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
+                    // Disable worker for better compatibility
+                    disableWorker: false,
+                    // Enable CORS
+                    isEvalSupported: false,
                   }}
                   loading={
                     <div className="flex items-center justify-center p-8">
@@ -561,7 +564,14 @@ export default function DocumentViewerPage() {
                       <div className="text-center">
                         <p className="font-medium">Failed to load PDF</p>
                         <p className="text-sm mt-1">Please check the file path or try refreshing</p>
-                        <p className="text-xs mt-2 text-gray-500">URL: {document.file_path}</p>
+                        <p className="text-xs mt-2 text-gray-500">URL: {document.file_url}</p>
+                        <Button 
+                          onClick={() => window.open(document.file_url, '_blank')} 
+                          className="mt-2"
+                          size="sm"
+                        >
+                          Open PDF in New Tab
+                        </Button>
                       </div>
                     </div>
                   }

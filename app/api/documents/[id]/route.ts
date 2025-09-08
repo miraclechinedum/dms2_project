@@ -71,15 +71,19 @@ export async function GET(
     // 3) The file_path is now a Cloudinary URL, so we can use it directly
     const filePath = docRow.file_path || "";
     
-    // Generate a proper PDF viewing URL from Cloudinary
+    // Generate proper PDF URLs for viewing
     let fileUrl = filePath;
     if (filePath.includes('cloudinary.com')) {
-      // Extract public_id from Cloudinary URL and generate proper PDF URL
-      const publicIdMatch = filePath.match(/\/([^\/]+)\.(pdf|PDF)$/);
+      // Extract public_id from Cloudinary URL
+      const publicIdMatch = filePath.match(/\/documents\/([^\/]+)$/);
       if (publicIdMatch) {
         const publicId = `documents/${publicIdMatch[1]}`;
-        fileUrl = CloudinaryService.getPublicPdfUrl(publicId);
+        fileUrl = CloudinaryService.getDirectPdfUrl(publicId);
         console.log("🔗 Generated PDF URL:", fileUrl);
+      } else {
+        // Fallback: try to construct URL directly
+        console.log("⚠️ Could not extract public_id, using original URL");
+        fileUrl = filePath;
       }
     }
 

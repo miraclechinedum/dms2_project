@@ -27,12 +27,19 @@ export class CloudinaryService {
     options: any = {}
   ): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
+      // Clean filename - remove spaces and special characters
+      const cleanName = originalName
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9._-]/g, '')
+        .replace(/\.pdf$/i, '');
+
       const uploadOptions = {
         folder: folder,
-        resource_type: options.resource_type || 'raw', // Use 'raw' for PDFs
-        public_id: `${Date.now()}-${originalName.replace(/\.[^/.]+$/, "")}`, // Remove extension, Cloudinary will add it
+        resource_type: 'raw', // Always use 'raw' for PDFs
+        public_id: `${Date.now()}-${cleanName}`,
         use_filename: true,
         unique_filename: true,
+        format: 'pdf',
         ...options,
       };
 
@@ -105,11 +112,20 @@ export class CloudinaryService {
    * Get a public URL that works with PDF viewers
    */
   static getPublicPdfUrl(publicId: string): string {
+    // For raw files, we need to use the raw URL format
+    const baseUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload`;
+    return `${baseUrl}/${publicId}.pdf`;
+  }
+
+  /**
+   * Get direct download URL for PDFs
+   */
+  static getDirectPdfUrl(publicId: string): string {
     return cloudinary.url(publicId, {
       secure: true,
-      resource_type: 'raw', // Important for PDF files
+      resource_type: 'raw',
       type: 'upload',
-      flags: 'attachment', // This helps with PDF viewing
+      format: 'pdf'
     });
   }
 }
