@@ -34,7 +34,6 @@ export function Sidebar() {
       icon: FileText,
       route: "/documents",
     },
-    { id: "upload", label: "Upload", icon: Upload, route: "/upload" },
     { id: "users", label: "Users", icon: Users, route: "/users" },
     {
       id: "departments",
@@ -116,7 +115,10 @@ export function Sidebar() {
                 key={item.id}
                 variant={activeView === item.id ? "default" : "ghost"}
                 className={cn(
-                  "w-full justify-start",
+                  "w-full justify-start transition-all duration-200",
+                  activeView === item.id 
+                    ? "bg-primary text-white shadow-sm" 
+                    : "hover:bg-primary/10 hover:text-primary",
                   isCollapsed ? "px-2" : "px-3"
                 )}
                 onClick={() => handleNavigation(item.route)}
@@ -134,7 +136,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           className={cn(
-            "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50",
+            "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors",
             isCollapsed ? "px-2" : "px-3"
           )}
           onClick={handleSignOut}

@@ -31,8 +31,18 @@ const config: Config = {
           foreground: 'hsl(var(--popover-foreground))',
         },
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
+          DEFAULT: 'hsl(142, 76%, 36%)', // Green-600
+          foreground: 'hsl(0, 0%, 98%)', // White
+          50: 'hsl(138, 76%, 97%)',
+          100: 'hsl(141, 84%, 93%)',
+          200: 'hsl(141, 79%, 85%)',
+          300: 'hsl(142, 77%, 73%)',
+          400: 'hsl(142, 69%, 58%)',
+          500: 'hsl(142, 71%, 45%)',
+          600: 'hsl(142, 76%, 36%)',
+          700: 'hsl(142, 72%, 29%)',
+          800: 'hsl(143, 64%, 24%)',
+          900: 'hsl(144, 61%, 20%)',
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
