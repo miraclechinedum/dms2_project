@@ -29,6 +29,7 @@ import {
   User,
   Building2,
   Calendar,
+  FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -88,17 +89,12 @@ export default function DocumentViewerPage() {
   const [stickyPosition, setStickyPosition] = useState<{ x: number; y: number } | null>(null);
   const [stickyColor, setStickyColor] = useState("#fef08a"); // yellow-200
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
-                <div className="w-80 bg-white border-l flex flex-col shadow-lg">
   const [nextSequenceNumber, setNextSequenceNumber] = useState(1);
   const [loading, setLoading] = useState(true);
-                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-primary" />
-                      Document Info
-                    </h3>
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
-                        <Badge className="ml-2 text-xs bg-primary/10 text-primary">{document.status}</Badge>
+  useEffect(() => {
     if (!user) {
       router.push("/");
       return;
@@ -135,13 +131,10 @@ export default function DocumentViewerPage() {
   }, [selectedTool, canvas, drawingColor]);
 
   useEffect(() => {
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <StickyNote className="h-4 w-4 text-primary" />
-                      Annotations
-                    </h3>
-      canvas.freeDrawingBrush.color = drawingColor;
-    }
-  }, [canvas, drawingColor]);
+      if (canvas) {
+        canvas.freeDrawingBrush.color = drawingColor;
+      }
+    }, [canvas, drawingColor]);
 
   const fetchDocument = async () => {
     console.log("Fetching document with ID:", params.id);
@@ -154,12 +147,11 @@ export default function DocumentViewerPage() {
         console.log("Document data received:", document);
         setDocument(document);
       } else {
-                          <Card key={annotation.id} className="p-3 hover:shadow-md transition-shadow">
-        console.error("Document fetch error:", response.status, errorText);
+        console.error("Document fetch error:", response.status);
         toast.error("Document not found");
         router.push("/documents");
       }
-                              <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
+    } catch (error) {
       console.error("Failed to fetch document:", error);
       toast.error("Failed to load document");
     } finally {
@@ -179,7 +171,6 @@ export default function DocumentViewerPage() {
         setAnnotations(annotations);
         const maxSeq = Math.max(
           0,
-            </div>
           ...annotations.map((a: Annotation) => a.sequence_number)
         );
         setNextSequenceNumber(maxSeq + 1);
@@ -227,7 +218,7 @@ export default function DocumentViewerPage() {
         setShowStickyForm(false);
         setStickyPosition(null);
         setSelectedTool("view");
-        fetchAnnotations();
+        await fetchAnnotations();
       } else {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to save annotation");
@@ -339,7 +330,10 @@ export default function DocumentViewerPage() {
 
   if (loading) {
     return (
+      <>
       <div className="flex h-screen bg-gray-50">
+        {/* ...existing content inside this div... */}
+      </div>
         <Sidebar />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -348,6 +342,7 @@ export default function DocumentViewerPage() {
           </div>
         </main>
       </div>
+      </>
     );
   }
 
