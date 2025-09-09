@@ -233,7 +233,6 @@ export default function DocumentsPage() {
                             <TableHead>Uploaded By</TableHead>
                             <TableHead>Size</TableHead>
                             <TableHead>Status</TableHead>
-                            <TableHead>Assigned To</TableHead>
                             <TableHead>Created</TableHead>
                             <TableHead className="w-24">Actions</TableHead>
                           </TableRow>
@@ -256,29 +255,6 @@ export default function DocumentsPage() {
                                 <Badge className={getStatusColor(document.status)}>
                                   {document.status}
                                 </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {document.assignments && document.assignments.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {document.assignments.map((assignment, idx) => (
-                                      <Badge key={idx} variant="outline" className="text-xs">
-                                        {assignment.assigned_to_user ? (
-                                          <div className="flex items-center gap-1">
-                                            <User className="h-3 w-3" />
-                                            {assignment.assigned_user_name}
-                                          </div>
-                                        ) : (
-                                          <div className="flex items-center gap-1">
-                                            <Building2 className="h-3 w-3" />
-                                            {assignment.assigned_department_name}
-                                          </div>
-                                        )}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400">-</span>
-                                )}
                               </TableCell>
                               <TableCell>
                                 {format(new Date(document.created_at), "MMM dd, yyyy")}

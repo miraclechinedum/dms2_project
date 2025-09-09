@@ -88,14 +88,17 @@ export default function DocumentViewerPage() {
   const [stickyPosition, setStickyPosition] = useState<{ x: number; y: number } | null>(null);
   const [stickyColor, setStickyColor] = useState("#fef08a"); // yellow-200
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
-  const [drawingColor, setDrawingColor] = useState("#3b82f6"); // blue-600
+                <div className="w-80 bg-white border-l flex flex-col shadow-lg">
   const [nextSequenceNumber, setNextSequenceNumber] = useState(1);
   const [loading, setLoading] = useState(true);
-
+                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      Document Info
+                    </h3>
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+                        <Badge className="ml-2 text-xs bg-primary/10 text-primary">{document.status}</Badge>
     if (!user) {
       router.push("/");
       return;
@@ -132,7 +135,10 @@ export default function DocumentViewerPage() {
   }, [selectedTool, canvas, drawingColor]);
 
   useEffect(() => {
-    if (canvas) {
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <StickyNote className="h-4 w-4 text-primary" />
+                      Annotations
+                    </h3>
       canvas.freeDrawingBrush.color = drawingColor;
     }
   }, [canvas, drawingColor]);
@@ -148,12 +154,12 @@ export default function DocumentViewerPage() {
         console.log("Document data received:", document);
         setDocument(document);
       } else {
-        const errorText = await response.text();
+                          <Card key={annotation.id} className="p-3 hover:shadow-md transition-shadow">
         console.error("Document fetch error:", response.status, errorText);
         toast.error("Document not found");
         router.push("/documents");
       }
-    } catch (error) {
+                              <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
       console.error("Failed to fetch document:", error);
       toast.error("Failed to load document");
     } finally {
@@ -173,6 +179,7 @@ export default function DocumentViewerPage() {
         setAnnotations(annotations);
         const maxSeq = Math.max(
           0,
+            </div>
           ...annotations.map((a: Annotation) => a.sequence_number)
         );
         setNextSequenceNumber(maxSeq + 1);
@@ -569,7 +576,7 @@ export default function DocumentViewerPage() {
                         <p className="text-sm mt-1">Please check the file path or try refreshing</p>
                         <p className="text-xs mt-2 text-gray-500">URL: {document.file_url}</p>
                         <Button 
-                          onClick={() => window.open(document.file_url, '_blank')} 
+                    <Button variant="outline" size="sm" onClick={exportPDF} className="hover:bg-primary/10 hover:border-primary hover:text-primary">
                           className="mt-2"
                           size="sm"
                         >
@@ -577,13 +584,14 @@ export default function DocumentViewerPage() {
                         </Button>
                       </div>
                     </div>
-                  }
+                <div className="bg-gray-100 border-b p-3 flex items-center justify-between shadow-sm">
                 >
                   <Page
                     pageNumber={currentPage}
                     scale={scale}
                     className="pdf-page"
                     loading={
+                      className="hover:bg-primary/10 hover:border-primary hover:text-primary disabled:opacity-50"
                       <div className="flex items-center justify-center p-4">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       </div>
@@ -597,6 +605,7 @@ export default function DocumentViewerPage() {
               )}
 
               {/* Drawing Canvas Overlay */}
+                      className="hover:bg-primary/10 hover:border-primary hover:text-primary disabled:opacity-50"
               {selectedTool === "draw" && (
                 <canvas
                   ref={canvasRef}
@@ -607,6 +616,7 @@ export default function DocumentViewerPage() {
                     zIndex: 10,
                   }}
                 />
+                      className="hover:bg-primary/10 hover:border-primary hover:text-primary"
               )}
 
               {/* Sticky Note Annotations */}
@@ -615,6 +625,7 @@ export default function DocumentViewerPage() {
                 .map((annotation) => (
                   <div
                     key={annotation.id}
+                      className="hover:bg-primary/10 hover:border-primary hover:text-primary"
                     className="absolute border border-gray-400 rounded p-2 shadow-md max-w-48"
                     style={{
                       left: `${annotation.position_x}%`,
@@ -622,59 +633,76 @@ export default function DocumentViewerPage() {
                       backgroundColor: annotation.content.color || "#fef08a",
                       zIndex: 20,
                     }}
-                  >
+                <div className="flex-1 overflow-auto bg-gray-100 p-4">
                     <div className="flex items-center justify-between mb-1">
                       <Badge variant="outline" className="text-xs">
                         #{annotation.sequence_number}
-                      </Badge>
+                      className="relative inline-block bg-white shadow-lg rounded-lg overflow-hidden"
                       <span className="text-xs text-gray-600">
                         {annotation.user_name}
                       </span>
                     </div>
                     <p className="text-sm">{annotation.content.text}</p>
-                  </div>
+                      {document.file_url ? (
                 ))}
 
               {/* Sticky Note Form */}
               {showStickyForm && stickyPosition && (
                 <div
                   className="absolute border border-gray-400 rounded p-3 shadow-lg z-30"
-                  style={{
+            <div className="min-h-screen bg-gray-50">
+              <div className="flex h-screen">
                     left: `${stickyPosition.x}%`,
-                    top: `${stickyPosition.y}%`,
-                    backgroundColor: stickyColor,
-                    minWidth: "200px",
-                  }}
-                >
-                  <div className="mb-2">
+                <div className="flex-1 flex flex-col">
+                  <Header />
+                  <main className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                      <p className="text-gray-600">Loading document...</p>
+                    </div>
+                  </main>
+                </div>
+              </div>
                     <Badge variant="outline" className="text-xs">
                       #{nextSequenceNumber}
                     </Badge>
                   </div>
                   <Textarea
-                    placeholder="Add your note..."
-                    value={stickyContent}
-                    onChange={(e) => setStickyContent(e.target.value)}
-                    className="mb-2 min-h-20 bg-transparent border-gray-400"
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={saveStickyNote}>
-                      <Save className="h-3 w-3 mr-1" />
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+            <div className="min-h-screen bg-gray-50">
+                <div className="flex-1 flex flex-col">
+                  <Header />
+                  <main className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-gray-600">Document not found</p>
+                      <Button onClick={() => router.push("/documents")} className="mt-4 bg-primary hover:bg-primary/90">
+                        Back to Documents
+                      </Button>
+                    </div>
+                  </main>
+                </div>
+              </div>
+                                  className="mt-2 bg-primary hover:bg-primary/90"
+                <div className="flex-1 flex flex-col">
+                  <Header />
+                  <main className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+          <div className="min-h-screen bg-gray-50">
+            <div className="flex h-screen">
+                    </div>
+              <div className="flex-1 flex flex-col">
+                <Header />
+                </div>
+                <div className="bg-white border-b p-4 flex items-center justify-between shadow-sm">
                       Save
-                    </Button>
+                    <Button variant="outline" onClick={() => router.push("/documents")} className="hover:bg-primary/10 hover:border-primary hover:text-primary">
                     <Button
-                      variant="outline"
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                       size="sm"
                       onClick={() => {
-                        setShowStickyForm(false);
+            <div className="min-h-screen bg-gray-50">
+              <div className="flex h-screen">
                         setStickyPosition(null);
-                        setStickyContent("");
-                        setSelectedTool("view");
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
                 </div>
               )}
             </div>
@@ -688,7 +716,8 @@ export default function DocumentViewerPage() {
             <h3 className="font-semibold text-gray-900 mb-3">Document Info</h3>
             <div className="space-y-2 text-sm">
               <div>
-                <span className="font-medium">Status:</span>
+                          variant={selectedTool === "sticky" ? "default" : "outline"}
+                          className={selectedTool === "sticky" ? "bg-primary hover:bg-primary/90" : "hover:bg-primary/10 hover:border-primary hover:text-primary"}
                 <Badge className="ml-2 text-xs">{document.status}</Badge>
               </div>
               <div>
@@ -708,7 +737,7 @@ export default function DocumentViewerPage() {
                     <div key={index} className="flex items-center gap-2 text-sm">
                       {assignment.assigned_to_user ? (
                         <>
-                          <User className="h-3 w-3" />
+                            className="w-full bg-primary hover:bg-primary/90"
                           <span>{assignment.assigned_user_name}</span>
                         </>
                       ) : (
@@ -720,7 +749,8 @@ export default function DocumentViewerPage() {
                     </div>
                   ))}
                 </div>
-              </div>
+                          variant={selectedTool === "draw" ? "default" : "outline"}
+                          className={selectedTool === "draw" ? "bg-primary hover:bg-primary/90" : "hover:bg-primary/10 hover:border-primary hover:text-primary"}
             )}
           </div>
 
@@ -740,7 +770,7 @@ export default function DocumentViewerPage() {
                     Use the tools above to add sticky notes or drawings
                   </p>
                 </div>
-              ) : (
+                            <Button size="sm" onClick={saveStickyNote} className="bg-primary hover:bg-primary/90">
                 annotations.map((annotation) => (
                   <Card key={annotation.id} className="p-3">
                     <div className="flex items-center justify-between mb-2">
@@ -749,7 +779,7 @@ export default function DocumentViewerPage() {
                       </Badge>
                       <Badge variant="secondary" className="text-xs">
                         {annotation.annotation_type === "sticky_note" ? "Note" : "Drawing"}
-                      </Badge>
+                      <Button size="sm" onClick={saveDrawing} className="bg-primary hover:bg-primary/90">
                     </div>
                     {annotation.annotation_type === "sticky_note" && (
                       <p className="text-sm mb-2">{annotation.content.text}</p>

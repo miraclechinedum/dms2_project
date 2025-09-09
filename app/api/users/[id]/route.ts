@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DatabaseService } from '@/lib/database';
 import { AuthService } from '@/lib/auth';
 
-export async function GET(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     const token = request.cookies.get('auth-token')?.value;
     if (!token) {
@@ -14,21 +17,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const sql = 'SELECT * FROM departments ORDER BY name';
-    const departments = await DatabaseService.query(sql);
+    const { name, email, departmentId } = await request.json();
 
-    return NextResponse.json({ departments });
+    if (!name || !email || !departmentId) {
+      return NextResponse.json({ error: 'Name, email, and department are required' }, { status: 400 });
+    }
+
+    const sql = `
+      UPDATE users 
+      SET name = ?, email = ?, department_id = ?, updated_at = NOW()
+      WHERE id = ?
+    `;
+
+    await DatabaseService.query(sql, [name, email, departmentId, params.id]);
+
+    return NextResponse.json({ 
+      message: 'User updated successfully'
+    });
 
   } catch (error) {
-    console.error('Fetch departments error:', error);
+    console.error('Update user error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch departments' },
+      { error: 'Failed to update user' },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     const token = request.cookies.get('auth-token')?.value;
     if (!token) {
@@ -40,30 +59,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const { name, description } = await request.json();
-
-    if (!name) {
-      return NextResponse.json({ error: 'Department name is required' }, { status: 400 });
-    }
-
-    const departmentId = `dept_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    const sql = `
-      INSERT INTO departments (id, name, description, created_at)
-      VALUES (?, ?, ?, NOW())
-    `;
-
-    await DatabaseService.query(sql, [departmentId, name, description || '']);
+    const sql = 'DELETE FROM users WHERE id = ?';
+    await DatabaseService.query(sql, [params.id]);
 
     return NextResponse.json({ 
-      message: 'Department created successfully',
-      departmentId 
+      message: 'User deleted successfully'
     });
 
   } catch (error) {
-    console.error('Create department error:', error);
+    console.error('Delete user error:', error);
     return NextResponse.json(
-      { error: 'Failed to create department' },
+      { error: 'Failed to delete user' },
       { status: 500 }
     );
   }
