@@ -29,6 +29,7 @@ import {
   User,
   Building2,
   Calendar,
+  FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -64,6 +65,7 @@ interface DocumentData {
   id: string;
   title: string;
   file_path: string;
+  file_url?: string;
   file_size: number;
   uploaded_by: string;
   status: string;
@@ -87,18 +89,15 @@ export default function DocumentViewerPage() {
   const [stickyContent, setStickyContent] = useState("");
   const [stickyPosition, setStickyPosition] = useState<{ x: number; y: number } | null>(null);
   const [stickyColor, setStickyColor] = useState("#fef08a"); // yellow-200
+  const [drawingColor, setDrawingColor] = useState("#000000");
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
-                <div className="w-80 bg-white border-l flex flex-col shadow-lg">
   const [nextSequenceNumber, setNextSequenceNumber] = useState(1);
   const [loading, setLoading] = useState(true);
-                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-primary" />
-                      Document Info
-                    </h3>
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
-                        <Badge className="ml-2 text-xs bg-primary/10 text-primary">{document.status}</Badge>
+  useEffect(() => {
     if (!user) {
       router.push("/");
       return;
@@ -135,10 +134,7 @@ export default function DocumentViewerPage() {
   }, [selectedTool, canvas, drawingColor]);
 
   useEffect(() => {
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <StickyNote className="h-4 w-4 text-primary" />
-                      Annotations
-                    </h3>
+    if (canvas) {
       canvas.freeDrawingBrush.color = drawingColor;
     }
   }, [canvas, drawingColor]);
@@ -154,12 +150,12 @@ export default function DocumentViewerPage() {
         console.log("Document data received:", document);
         setDocument(document);
       } else {
-                          <Card key={annotation.id} className="p-3 hover:shadow-md transition-shadow">
+        const errorText = await response.text();
         console.error("Document fetch error:", response.status, errorText);
         toast.error("Document not found");
         router.push("/documents");
       }
-                              <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
+    } catch (error) {
       console.error("Failed to fetch document:", error);
       toast.error("Failed to load document");
     } finally {
@@ -179,7 +175,6 @@ export default function DocumentViewerPage() {
         setAnnotations(annotations);
         const maxSeq = Math.max(
           0,
-            </div>
           ...annotations.map((a: Annotation) => a.sequence_number)
         );
         setNextSequenceNumber(maxSeq + 1);
@@ -527,274 +522,256 @@ export default function DocumentViewerPage() {
           </div>
         </div>
 
-        {/* PDF Viewer */}
-        <div className="flex-1 overflow-auto bg-gray-200 p-4">
-          <div className="max-w-4xl mx-auto">
-            <div
-              ref={pageRef}
-              className="relative inline-block bg-white shadow-lg"
-              onClick={handlePageClick}
-              style={{
-                cursor: selectedTool === "sticky" ? "crosshair" : "default",
-              }}
-            >
-              {document.file_path ? (
-                <Document
-                  file={{
-                    url: document.file_url, // Use the cleaned file_url instead of file_path
-                    // Add headers to help with CORS and PDF loading
-                    httpHeaders: {},
-                    withCredentials: false,
-                    // Add these options to help with loading
-                    cacheKey: document.id,
-                  }}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  onLoadError={onDocumentLoadError}
-                  className="pdf-document"
-                  options={{
-                    cMapUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
-                    cMapPacked: true,
-                    standardFontDataUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
-                    disableWorker: true, // Disable worker for better compatibility with Cloudinary
-                    isEvalSupported: false,
-                    // Add these for better PDF loading
-                    verbosity: 1,
-                  }}
-                  loading={
-                    <div className="flex items-center justify-center p-8">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                        <p className="text-sm text-gray-600">Loading PDF...</p>
-                        <p className="text-xs text-gray-400 mt-1">URL: {document.file_url}</p>
-                      </div>
-                    </div>
-                  }
-                  error={
-                    <div className="flex items-center justify-center p-8 text-red-600">
-                      <div className="text-center">
-                        <p className="font-medium">Failed to load PDF</p>
-                        <p className="text-sm mt-1">Please check the file path or try refreshing</p>
-                        <p className="text-xs mt-2 text-gray-500">URL: {document.file_url}</p>
-                        <Button 
-                    <Button variant="outline" size="sm" onClick={exportPDF} className="hover:bg-primary/10 hover:border-primary hover:text-primary">
-                          className="mt-2"
-                          size="sm"
-                        >
-                          Open PDF in New Tab
-                        </Button>
-                      </div>
-                    </div>
-                <div className="bg-gray-100 border-b p-3 flex items-center justify-between shadow-sm">
-                >
-                  <Page
-                    pageNumber={currentPage}
-                    scale={scale}
-                    className="pdf-page"
+        {/* Main Content */}
+        <div className="flex-1 flex">
+          {/* PDF Viewer */}
+          <div className="flex-1 overflow-auto bg-gray-200 p-4">
+            <div className="max-w-4xl mx-auto">
+              <div
+                ref={pageRef}
+                className="relative inline-block bg-white shadow-lg"
+                onClick={handlePageClick}
+                style={{
+                  cursor: selectedTool === "sticky" ? "crosshair" : "default",
+                }}
+              >
+                {document.file_path ? (
+                  <Document
+                    file={{
+                      url: document.file_url, // Use the cleaned file_url instead of file_path
+                      // Add headers to help with CORS and PDF loading
+                      httpHeaders: {},
+                      withCredentials: false,
+                      // Add these options to help with loading
+                      cacheKey: document.id,
+                    }}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    onLoadError={onDocumentLoadError}
+                    className="pdf-document"
+                    options={{
+                      cMapUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
+                      cMapPacked: true,
+                      standardFontDataUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
+                      disableWorker: true, // Disable worker for better compatibility with Cloudinary
+                      isEvalSupported: false,
+                      // Add these for better PDF loading
+                      verbosity: 1,
+                    }}
                     loading={
-                      className="hover:bg-primary/10 hover:border-primary hover:text-primary disabled:opacity-50"
-                      <div className="flex items-center justify-center p-4">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <div className="flex items-center justify-center p-8">
+                        <div className="text-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                          <p className="text-sm text-gray-600">Loading PDF...</p>
+                          <p className="text-xs text-gray-400 mt-1">URL: {document.file_url}</p>
+                        </div>
                       </div>
                     }
-                  />
-                </Document>
-              ) : (
-                <div className="flex items-center justify-center p-8 text-red-600">
-                  <p>No file path available for this document</p>
-                </div>
-              )}
-
-              {/* Drawing Canvas Overlay */}
-                      className="hover:bg-primary/10 hover:border-primary hover:text-primary disabled:opacity-50"
-              {selectedTool === "draw" && (
-                <canvas
-                  ref={canvasRef}
-                  className="absolute top-0 left-0 pointer-events-auto"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    zIndex: 10,
-                  }}
-                />
-                      className="hover:bg-primary/10 hover:border-primary hover:text-primary"
-              )}
-
-              {/* Sticky Note Annotations */}
-              {annotations
-                .filter((a) => a.annotation_type === "sticky_note")
-                .map((annotation) => (
-                  <div
-                    key={annotation.id}
-                      className="hover:bg-primary/10 hover:border-primary hover:text-primary"
-                    className="absolute border border-gray-400 rounded p-2 shadow-md max-w-48"
-                    style={{
-                      left: `${annotation.position_x}%`,
-                      top: `${annotation.position_y}%`,
-                      backgroundColor: annotation.content.color || "#fef08a",
-                      zIndex: 20,
-                    }}
-                <div className="flex-1 overflow-auto bg-gray-100 p-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge variant="outline" className="text-xs">
-                        #{annotation.sequence_number}
-                      className="relative inline-block bg-white shadow-lg rounded-lg overflow-hidden"
-                      <span className="text-xs text-gray-600">
-                        {annotation.user_name}
-                      </span>
-                    </div>
-                    <p className="text-sm">{annotation.content.text}</p>
-                      {document.file_url ? (
-                ))}
-
-              {/* Sticky Note Form */}
-              {showStickyForm && stickyPosition && (
-                <div
-                  className="absolute border border-gray-400 rounded p-3 shadow-lg z-30"
-            <div className="min-h-screen bg-gray-50">
-              <div className="flex h-screen">
-                    left: `${stickyPosition.x}%`,
-                <div className="flex-1 flex flex-col">
-                  <Header />
-                  <main className="flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                      <p className="text-gray-600">Loading document...</p>
-                    </div>
-                  </main>
-                </div>
-              </div>
-                    <Badge variant="outline" className="text-xs">
-                      #{nextSequenceNumber}
-                    </Badge>
+                    error={
+                      <div className="flex items-center justify-center p-8 text-red-600">
+                        <div className="text-center">
+                          <p className="font-medium">Failed to load PDF</p>
+                          <p className="text-sm mt-1">Please check the file path or try refreshing</p>
+                          <p className="text-xs mt-2 text-gray-500">URL: {document.file_url}</p>
+                          <Button 
+                            onClick={() => window.open(document.file_url, '_blank')}
+                            className="mt-2"
+                            size="sm"
+                          >
+                            Open PDF in New Tab
+                          </Button>
+                        </div>
+                      </div>
+                    }
+                  >
+                    <Page
+                      pageNumber={currentPage}
+                      scale={scale}
+                      className="pdf-page"
+                      loading={
+                        <div className="flex items-center justify-center p-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        </div>
+                      }
+                    />
+                  </Document>
+                ) : (
+                  <div className="flex items-center justify-center p-8 text-red-600">
+                    <p>No file path available for this document</p>
                   </div>
-                  <Textarea
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-            <div className="min-h-screen bg-gray-50">
-                <div className="flex-1 flex flex-col">
-                  <Header />
-                  <main className="flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                      <p className="text-gray-600">Document not found</p>
-                      <Button onClick={() => router.push("/documents")} className="mt-4 bg-primary hover:bg-primary/90">
-                        Back to Documents
-                      </Button>
-                    </div>
-                  </main>
-                </div>
-              </div>
-                                  className="mt-2 bg-primary hover:bg-primary/90"
-                <div className="flex-1 flex flex-col">
-                  <Header />
-                  <main className="flex-1 flex items-center justify-center">
-                    <div className="text-center">
-          <div className="min-h-screen bg-gray-50">
-            <div className="flex h-screen">
-                    </div>
-              <div className="flex-1 flex flex-col">
-                <Header />
-                </div>
-                <div className="bg-white border-b p-4 flex items-center justify-between shadow-sm">
-                      Save
-                    <Button variant="outline" onClick={() => router.push("/documents")} className="hover:bg-primary/10 hover:border-primary hover:text-primary">
-                    <Button
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                      size="sm"
-                      onClick={() => {
-            <div className="min-h-screen bg-gray-50">
-              <div className="flex h-screen">
-                        setStickyPosition(null);
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+                )}
 
-        {/* Document Info & Annotations Sidebar */}
-        <div className="w-80 bg-white border-l flex flex-col">
-          {/* Document Info */}
-          <div className="p-4 border-b">
-            <h3 className="font-semibold text-gray-900 mb-3">Document Info</h3>
-            <div className="space-y-2 text-sm">
-              <div>
-                          variant={selectedTool === "sticky" ? "default" : "outline"}
-                          className={selectedTool === "sticky" ? "bg-primary hover:bg-primary/90" : "hover:bg-primary/10 hover:border-primary hover:text-primary"}
-                <Badge className="ml-2 text-xs">{document.status}</Badge>
-              </div>
-              <div>
-                <span className="font-medium">Created:</span>
-                <span className="ml-2">
-                  {format(new Date(document.created_at), "MMM dd, yyyy")}
-                </span>
-              </div>
-            </div>
+                {/* Drawing Canvas Overlay */}
+                {selectedTool === "draw" && (
+                  <canvas
+                    ref={canvasRef}
+                    className="absolute top-0 left-0 pointer-events-auto"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      zIndex: 10,
+                    }}
+                  />
+                )}
 
-            {/* Assignments */}
-            {document.assignments && document.assignments.length > 0 && (
-              <div className="mt-4">
-                <h4 className="font-medium text-sm mb-2">Assigned to:</h4>
-                <div className="space-y-1">
-                  {document.assignments.map((assignment, index) => (
-                    <div key={index} className="flex items-center gap-2 text-sm">
-                      {assignment.assigned_to_user ? (
-                        <>
-                            className="w-full bg-primary hover:bg-primary/90"
-                          <span>{assignment.assigned_user_name}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Building2 className="h-3 w-3" />
-                          <span>{assignment.assigned_department_name}</span>
-                        </>
-                      )}
+                {/* Sticky Note Annotations */}
+                {annotations
+                  .filter((a) => a.annotation_type === "sticky_note")
+                  .map((annotation) => (
+                    <div
+                      key={annotation.id}
+                      className="absolute border border-gray-400 rounded p-2 shadow-md max-w-48"
+                      style={{
+                        left: `${annotation.position_x}%`,
+                        top: `${annotation.position_y}%`,
+                        backgroundColor: annotation.content.color || "#fef08a",
+                        zIndex: 20,
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <Badge variant="outline" className="text-xs">
+                          #{annotation.sequence_number}
+                        </Badge>
+                        <span className="text-xs text-gray-600">
+                          {annotation.user_name}
+                        </span>
+                      </div>
+                      <p className="text-sm">{annotation.content.text}</p>
                     </div>
                   ))}
-                </div>
-                          variant={selectedTool === "draw" ? "default" : "outline"}
-                          className={selectedTool === "draw" ? "bg-primary hover:bg-primary/90" : "hover:bg-primary/10 hover:border-primary hover:text-primary"}
-            )}
-          </div>
 
-          {/* Annotations */}
-          <div className="p-4 border-b">
-            <h3 className="font-semibold text-gray-900">Annotations</h3>
-            <p className="text-sm text-gray-600">Page {currentPage} annotations</p>
-          </div>
-
-          <ScrollArea className="flex-1">
-            <div className="p-4 space-y-3">
-              {annotations.length === 0 ? (
-                <div className="text-center py-8">
-                  <StickyNote className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">No annotations on this page</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use the tools above to add sticky notes or drawings
-                  </p>
-                </div>
-                            <Button size="sm" onClick={saveStickyNote} className="bg-primary hover:bg-primary/90">
-                annotations.map((annotation) => (
-                  <Card key={annotation.id} className="p-3">
+                {/* Sticky Note Form */}
+                {showStickyForm && stickyPosition && (
+                  <div
+                    className="absolute border border-gray-400 rounded p-3 shadow-lg z-30"
+                    style={{
+                      left: `${stickyPosition.x}%`,
+                      top: `${stickyPosition.y}%`,
+                      backgroundColor: stickyColor,
+                    }}
+                  >
                     <div className="flex items-center justify-between mb-2">
                       <Badge variant="outline" className="text-xs">
-                        #{annotation.sequence_number}
+                        #{nextSequenceNumber}
                       </Badge>
-                      <Badge variant="secondary" className="text-xs">
-                        {annotation.annotation_type === "sticky_note" ? "Note" : "Drawing"}
-                      <Button size="sm" onClick={saveDrawing} className="bg-primary hover:bg-primary/90">
                     </div>
-                    {annotation.annotation_type === "sticky_note" && (
-                      <p className="text-sm mb-2">{annotation.content.text}</p>
-                    )}
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>by {annotation.user_name}</span>
-                      <span>
-                        {format(new Date(annotation.created_at), "MMM dd, HH:mm")}
-                      </span>
+                    <Textarea
+                      value={stickyContent}
+                      onChange={(e) => setStickyContent(e.target.value)}
+                      placeholder="Enter your note..."
+                      className="mb-2 min-h-[60px] text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveStickyNote}>
+                        Save
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowStickyForm(false);
+                          setStickyPosition(null);
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </Card>
-                ))
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Document Info & Annotations Sidebar */}
+          <div className="w-80 bg-white border-l flex flex-col shadow-lg">
+            {/* Document Info */}
+            <div className="p-4 border-b">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                Document Info
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="font-medium">Status:</span>
+                  <Badge className="ml-2 text-xs bg-primary/10 text-primary">{document.status}</Badge>
+                </div>
+                <div>
+                  <span className="font-medium">Created:</span>
+                  <span className="ml-2">
+                    {format(new Date(document.created_at), "MMM dd, yyyy")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Assignments */}
+              {document.assignments && document.assignments.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-medium text-sm mb-2">Assigned to:</h4>
+                  <div className="space-y-1">
+                    {document.assignments.map((assignment, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm">
+                        {assignment.assigned_to_user ? (
+                          <>
+                            <User className="h-3 w-3" />
+                            <span>{assignment.assigned_user_name}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Building2 className="h-3 w-3" />
+                            <span>{assignment.assigned_department_name}</span>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-          </ScrollArea>
+
+            {/* Annotations */}
+            <div className="p-4 border-b">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <StickyNote className="h-4 w-4 text-primary" />
+                Annotations
+              </h3>
+              <p className="text-sm text-gray-600">Page {currentPage} annotations</p>
+            </div>
+
+            <ScrollArea className="flex-1">
+              <div className="p-4 space-y-3">
+                {annotations.length === 0 ? (
+                  <div className="text-center py-8">
+                    <StickyNote className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">No annotations on this page</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use the tools above to add sticky notes or drawings
+                    </p>
+                  </div>
+                ) : (
+                  annotations.map((annotation) => (
+                    <Card key={annotation.id} className="p-3 hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="outline" className="text-xs">
+                          #{annotation.sequence_number}
+                        </Badge>
+                        <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
+                          {annotation.annotation_type === "sticky_note" ? "Note" : "Drawing"}
+                        </Badge>
+                      </div>
+                      {annotation.annotation_type === "sticky_note" && (
+                        <p className="text-sm mb-2">{annotation.content.text}</p>
+                      )}
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>by {annotation.user_name}</span>
+                        <span>
+                          {format(new Date(annotation.created_at), "MMM dd, HH:mm")}
+                        </span>
+                      </div>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
       </div>
     </div>
