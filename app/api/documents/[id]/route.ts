@@ -71,19 +71,29 @@ export async function GET(
     // 3) The file_path is now a Cloudinary URL, so we can use it directly
     const filePath = docRow.file_path || "";
     
-    // Generate proper PDF URLs for viewing
+    // Generate proper PDF URLs for viewing - handle both old and new formats
     let fileUrl = filePath;
     if (filePath.includes('cloudinary.com')) {
-      // Extract public_id from Cloudinary URL
-      const publicIdMatch = filePath.match(/\/documents\/([^\/]+)$/);
+      // Extract public_id from Cloudinary URL - handle both raw and image URLs
+      const publicIdMatch = filePath.match(/\/(documents\/[^?]+)/);
       if (publicIdMatch) {
-        const publicId = `documents/${publicIdMatch[1]}`;
-        fileUrl = CloudinaryService.getDirectPdfUrl(publicId);
+        let publicId = publicIdMatch[1];
+        // Remove any query parameters
+        publicId = publicId.split('?')[0];
+        // Remove double extensions
+        publicId = publicId.replace(/\.pdf\.pdf$/, '.pdf');
+        
+        // Generate clean URL
+        const baseUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload`;
+        fileUrl = `${baseUrl}/${publicId}`;
         console.log("🔗 Generated PDF URL:", fileUrl);
       } else {
-        // Fallback: try to construct URL directly
-        console.log("⚠️ Could not extract public_id, using original URL");
-        fileUrl = filePath;
+        // Fallback: clean the original URL
+        fileUrl = filePath
+          .replace('/image/upload/', '/raw/upload/')
+          .replace(/\.pdf\.pdf/, '.pdf')
+          .split('?')[0]; // Remove query parameters
+        console.log("⚠️ Using cleaned fallback URL:", fileUrl);
       }
     }
 

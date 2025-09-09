@@ -534,10 +534,12 @@ export default function DocumentViewerPage() {
               {document.file_path ? (
                 <Document
                   file={{
-                    url: document.file_path,
+                    url: document.file_url, // Use the cleaned file_url instead of file_path
                     // Add headers to help with CORS and PDF loading
                     httpHeaders: {},
-                    withCredentials: false
+                    withCredentials: false,
+                    // Add these options to help with loading
+                    cacheKey: document.id,
                   }}
                   onLoadSuccess={onDocumentLoadSuccess}
                   onLoadError={onDocumentLoadError}
@@ -546,16 +548,17 @@ export default function DocumentViewerPage() {
                     cMapUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
                     cMapPacked: true,
                     standardFontDataUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
-                    // Disable worker for better compatibility
-                    disableWorker: false,
-                    // Enable CORS
+                    disableWorker: true, // Disable worker for better compatibility with Cloudinary
                     isEvalSupported: false,
+                    // Add these for better PDF loading
+                    verbosity: 1,
                   }}
                   loading={
                     <div className="flex items-center justify-center p-8">
                       <div className="text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
                         <p className="text-sm text-gray-600">Loading PDF...</p>
+                        <p className="text-xs text-gray-400 mt-1">URL: {document.file_url}</p>
                       </div>
                     </div>
                   }
