@@ -48,16 +48,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch("/api/auth/me", {
-        credentials: "include",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      });
-
+      const response = await fetch("/api/auth/me", { credentials: "include" });
       if (response.ok) {
-        const { user } = await response.json();
-        setUser(user);
+        const { user: fetchedUser } = await response.json();
+        setUser((prev) =>
+          JSON.stringify(prev) === JSON.stringify(fetchedUser)
+            ? prev
+            : fetchedUser
+        );
       } else {
         setUser(null);
       }

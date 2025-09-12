@@ -1,0 +1,31 @@
+/* Custom WebViviewer Styling */
+.HeaderContainer {
+  display: none !important;
+}
+
+.LeftPanel {
+  display: none !important;
+}
+
+.DocumentContainer {
+  top: 0 !important;
+  left: 0 !important;
+}
+
+/* Custom annotation styles */
+.Annotation.StickyNote {
+  border-radius: 8px !important;
+}
+
+.FreeHandAnnotation {
+  opacity: 0.9 !important;
+}
+
+/* Hide default UI elements we don't want */
+.RibbonGroup,
+.Divider,
+.ToggleNotesButton,
+.SearchButton,
+.MenuButton {
+  display: none !important;
+}

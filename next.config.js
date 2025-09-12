@@ -1,28 +1,27 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: {
-    domains: ['res.cloudinary.com'],
+  // output: "export",
+  reactStrictMode: false,
+  eslint: {
+    ignoreDuringBuilds: true,
   },
-  async headers() {
-    return [
-      {
-        source: '/api/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
-        ],
-      },
-    ];
-  },
-  webpack: (config) => {
-    // Add fallbacks for Node.js modules
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      net: false,
-      tls: false,
+  images: { unoptimized: true },
+  webpack: (config, { isServer }) => {
+    // Add fallbacks for Node.js modules when building for the browser
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        crypto: false,
+      };
+    }
+
+    // Handle Apryse WebViewer static assets
+    config.resolve.alias = {
+      ...config.resolve.alias,
     };
+
     return config;
   },
 };

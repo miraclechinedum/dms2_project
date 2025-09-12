@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>WebViewer Test</title>
+  </head>
+  <body style="margin: 0; height: 100vh">
+    <div id="viewer" style="height: 100vh"></div>
+
+    <!-- adjust path to whichever one you used above (e.g. /lib/webviewer) -->
+    <script src="/lib/webviewer/webviewer.min.js"></script>
+    <script>
+      WebViewer(
+        {
+          path: "/lib/webviewer",
+          initialDoc:
+            "/uploads/documents/1757421885706-document_6_annotated.pdf", // or the full Cloudinary https://... URL
+          licenseKey: "demo:1757509875851:604eca4e0300000000877d78...",
+        },
+        document.getElementById("viewer")
+      )
+        .then((instance) => {
+          console.log("WebViewer instance ready", instance);
+        })
+        .catch((err) => console.error("WebViewer init failed", err));
+    </script>
+  </body>
+</html>

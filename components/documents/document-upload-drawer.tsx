@@ -52,7 +52,9 @@ export function DocumentUploadDrawer({
 }: DocumentUploadDrawerProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assignmentType, setAssignmentType] = useState<"user" | "department">("department");
+  const [assignmentType, setAssignmentType] = useState<"user" | "department">(
+    "department"
+  );
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -121,7 +123,7 @@ export function DocumentUploadDrawer({
     if (checked) {
       setSelectedUsers([...selectedUsers, userId]);
     } else {
-      setSelectedUsers(selectedUsers.filter(id => id !== userId));
+      setSelectedUsers(selectedUsers.filter((id) => id !== userId));
     }
   };
 
@@ -129,7 +131,7 @@ export function DocumentUploadDrawer({
     if (checked) {
       setSelectedDepartments([...selectedDepartments, deptId]);
     } else {
-      setSelectedDepartments(selectedDepartments.filter(id => id !== deptId));
+      setSelectedDepartments(selectedDepartments.filter((id) => id !== deptId));
     }
   };
 
@@ -167,20 +169,20 @@ export function DocumentUploadDrawer({
       formData.append("title", title);
       formData.append("description", description);
       formData.append("assignmentType", assignmentType);
-      
+
       if (assignmentType === "user") {
-        selectedUsers.forEach(userId => {
+        selectedUsers.forEach((userId) => {
           formData.append("assignedUsers", userId);
         });
       } else {
-        selectedDepartments.forEach(deptId => {
+        selectedDepartments.forEach((deptId) => {
           formData.append("assignedDepartments", deptId);
         });
       }
 
       // Simulate upload progress
       const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
+        setUploadProgress((prev) => {
           if (prev >= 90) {
             clearInterval(progressInterval);
             return prev;
@@ -206,7 +208,6 @@ export function DocumentUploadDrawer({
       resetForm();
       onUploadSuccess();
       onOpenChange(false);
-
     } catch (error) {
       console.error("Upload error:", error);
       toast.error(
@@ -246,7 +247,8 @@ export function DocumentUploadDrawer({
                   : "border-gray-300 hover:border-gray-400"
               )}
             >
-              <input {...getInputProps()} />
+              {/* ⬇️ Fix: prevent form submission */}
+              <input {...getInputProps({ form: undefined })} />
               {selectedFile ? (
                 <div className="flex items-center justify-center space-x-2">
                   <FileText className="h-6 w-6 text-green-600" />
@@ -259,6 +261,7 @@ export function DocumentUploadDrawer({
                     </p>
                   </div>
                   <Button
+                    type="button" // ⬅️ fix
                     variant="ghost"
                     size="sm"
                     onClick={(e) => {
@@ -418,6 +421,7 @@ export function DocumentUploadDrawer({
 
           <div className="flex gap-3 pt-4">
             <Button
+              type="button" // ⬅️ fix
               onClick={uploadDocument}
               disabled={!selectedFile || !title || isUploading}
               className="flex-1"
@@ -425,6 +429,7 @@ export function DocumentUploadDrawer({
               {isUploading ? "Uploading..." : "Upload Document"}
             </Button>
             <Button
+              type="button" // ⬅️ fix
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={isUploading}

@@ -1,60 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DatabaseService } from '@/lib/database';
-import { AuthService } from '@/lib/auth';
+
+// Mock data for development - replace with your actual database
+let mockAnnotations: any[] = [];
+let nextId = 1;
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const decoded = AuthService.verifyToken(token);
-    if (!decoded) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const documentId = searchParams.get('documentId');
     const pageNumber = searchParams.get('pageNumber');
 
-    if (!documentId || !pageNumber) {
-      return NextResponse.json({ error: 'Document ID and page number are required' }, { status: 400 });
+    if (!documentId) {
+      return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
     }
 
-    const sql = `
-      SELECT a.*, u.name as user_name
-      FROM annotations a
-      JOIN users u ON a.user_id = u.id
-      WHERE a.document_id = ? AND a.page_number = ?
-      ORDER BY a.sequence_number
-    `;
-
-    const annotations = await DatabaseService.query(sql, [documentId, parseInt(pageNumber)]);
-
-    return NextResponse.json({ annotations });
-
-  } catch (error) {
-    console.error('Fetch annotations error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch annotations' },
-      { status: 500 }
+    // Filter annotations by document ID and optionally by page number
+    let filteredAnnotations = mockAnnotations.filter(
+      (annotation) => annotation.document_id === documentId
     );
+
+    if (pageNumber) {
+      filteredAnnotations = filteredAnnotations.filter(
+        (annotation) => annotation.page_number === parseInt(pageNumber)
+      );
+    }
+
+    return NextResponse.json({ annotations: filteredAnnotations });
+  } catch (error) {
+    console.error('Error fetching annotations:', error);
+    return NextResponse.json({ error: 'Failed to fetch annotations' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const token = request.cookies.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const decoded = AuthService.verifyToken(token);
-    if (!decoded) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
+    const body = await request.json();
     const {
       documentId,
       pageNumber,
@@ -62,52 +42,59 @@ export async function POST(request: NextRequest) {
       content,
       sequenceNumber,
       positionX,
-      positionY
-    } = await request.json();
+      positionY,
+    } = body;
 
-    const annotationId = `ann_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Validate required fields
+    if (!documentId || !pageNumber || !annotationType || !content) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
 
-    const sql = `
-      INSERT INTO annotations (id, document_id, user_id, page_number, annotation_type, content, sequence_number, position_x, position_y)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    // Create new annotation
+    const newAnnotation = {
+      id: `annotation_${nextId++}`,
+      document_id: documentId,
+      user_id: 'current_user_id', // Replace with actual user ID from session
+      page_number: pageNumber,
+      annotation_type: annotationType,
+      content,
+      sequence_number: sequenceNumber || 1,
+      position_x: positionX || 0,
+      position_y: positionY || 0,
+      created_at: new Date().toISOString(),
+      user_name: 'Current User', // Replace with actual user name
+    };
 
-    await DatabaseService.query(sql, [
-      annotationId,
-      documentId,
-      decoded.userId,
-      pageNumber,
-      annotationType,
-      JSON.stringify(content),
-      sequenceNumber,
-      positionX,
-      positionY
-    ]);
+    mockAnnotations.push(newAnnotation);
 
-    // Log activity
-    const activitySql = `
-      INSERT INTO activity_logs (id, document_id, user_id, action, details)
-      VALUES (?, ?, ?, 'annotation_added', JSON_OBJECT('type', ?, 'page', ?))
-    `;
-    
-    await DatabaseService.query(activitySql, [
-      `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      documentId,
-      decoded.userId,
-      annotationType,
-      pageNumber
-    ]);
-
-    return NextResponse.json({ 
-      message: 'Annotation saved successfully',
-      annotationId 
-    });
-
+    return NextResponse.json({ annotation: newAnnotation }, { status: 201 });
   } catch (error) {
-    console.error('Save annotation error:', error);
-    return NextResponse.json(
-      { error: 'Failed to save annotation' },
-      { status: 500 }
-    );
+    console.error('Error creating annotation:', error);
+    return NextResponse.json({ error: 'Failed to create annotation' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const annotationId = searchParams.get('id');
+
+    if (!annotationId) {
+      return NextResponse.json({ error: 'Annotation ID is required' }, { status: 400 });
+    }
+
+    // Find and remove annotation
+    const index = mockAnnotations.findIndex((annotation) => annotation.id === annotationId);
+    
+    if (index === -1) {
+      return NextResponse.json({ error: 'Annotation not found' }, { status: 404 });
+    }
+
+    mockAnnotations.splice(index, 1);
+
+    return NextResponse.json({ message: 'Annotation deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting annotation:', error);
+    return NextResponse.json({ error: 'Failed to delete annotation' }, { status: 500 });
   }
 }
