@@ -248,9 +248,7 @@ export default function DocumentsPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="flex h-screen">
-          <Sidebar />
           <div className="flex-1 flex flex-col">
-            <Header />
             <main className="flex-1 overflow-auto p-6">
               <Card>
                 <CardHeader>
@@ -310,9 +308,7 @@ export default function DocumentsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
-        <Sidebar />
         <div className="flex-1 flex flex-col">
-          <Header />
           <main className="flex-1 overflow-auto p-6 page-transition">
             <div className="space-y-6">
               {/* Header */}

@@ -171,9 +171,7 @@ export default function DocumentViewerPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="flex h-screen">
-          <Sidebar />
           <div className="flex-1 flex flex-col">
-            <Header />
             <main className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
@@ -190,9 +188,7 @@ export default function DocumentViewerPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="flex h-screen">
-          <Sidebar />
           <div className="flex-1 flex flex-col">
-            <Header />
             <main className="flex-1 flex items-center justify-center">
               <p className="text-gray-600">Please sign in to view documents</p>
             </main>
@@ -206,9 +202,7 @@ export default function DocumentViewerPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="flex h-screen">
-          <Sidebar />
           <div className="flex-1 flex flex-col">
-            <Header />
             <main className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <p className="text-gray-600">Document not found</p>
@@ -229,10 +223,7 @@ export default function DocumentViewerPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
-        <Sidebar />
         <div className="flex-1 flex flex-col">
-          <Header />
-
           {/* Document Header */}
           <div className="bg-white border-b p-4 flex items-center justify-between shadow-sm">
             <div className="flex items-center space-x-4">

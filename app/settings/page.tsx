@@ -25,15 +25,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { 
-  Settings, 
-  User, 
-  Shield, 
-  Bell, 
-  Palette, 
+import {
+  Settings,
+  User,
+  Shield,
+  Bell,
+  Palette,
   Save,
   Eye,
-  EyeOff
+  EyeOff,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { Toaster } from "react-hot-toast";
@@ -100,7 +100,7 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Profile updated successfully!");
     } catch (error) {
       toast.error("Failed to update profile");
@@ -123,7 +123,7 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Security settings updated successfully!");
       setSecurityData({
         ...securityData,
@@ -142,7 +142,7 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Notification preferences updated!");
     } catch (error) {
       toast.error("Failed to update notification settings");
@@ -155,7 +155,7 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Appearance settings updated!");
     } catch (error) {
       toast.error("Failed to update appearance settings");
@@ -171,15 +171,15 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
-        <Sidebar />
         <div className="flex-1 flex flex-col">
-          <Header />
           <main className="flex-1 overflow-auto p-6 page-transition">
             <div className="max-w-4xl mx-auto space-y-6">
               {/* Header */}
               <div>
                 <h2 className="text-3xl font-bold text-gray-900">Settings</h2>
-                <p className="text-gray-600">Manage your account and application preferences</p>
+                <p className="text-gray-600">
+                  Manage your account and application preferences
+                </p>
               </div>
 
               {/* Profile Settings */}
@@ -200,7 +200,12 @@ export default function SettingsPage() {
                       <Input
                         id="name"
                         value={profileData.name}
-                        onChange={(e) => setProfileData({...profileData, name: e.target.value})}
+                        onChange={(e) =>
+                          setProfileData({
+                            ...profileData,
+                            name: e.target.value,
+                          })
+                        }
                         className="focus:ring-primary focus:border-primary"
                       />
                     </div>
@@ -210,7 +215,12 @@ export default function SettingsPage() {
                         id="email"
                         type="email"
                         value={profileData.email}
-                        onChange={(e) => setProfileData({...profileData, email: e.target.value})}
+                        onChange={(e) =>
+                          setProfileData({
+                            ...profileData,
+                            email: e.target.value,
+                          })
+                        }
                         className="focus:ring-primary focus:border-primary"
                       />
                     </div>
@@ -221,12 +231,14 @@ export default function SettingsPage() {
                       id="bio"
                       placeholder="Tell us about yourself..."
                       value={profileData.bio}
-                      onChange={(e) => setProfileData({...profileData, bio: e.target.value})}
+                      onChange={(e) =>
+                        setProfileData({ ...profileData, bio: e.target.value })
+                      }
                       className="focus:ring-primary focus:border-primary"
                       rows={3}
                     />
                   </div>
-                  <Button 
+                  <Button
                     onClick={handleProfileSave}
                     disabled={loading}
                     className="bg-primary hover:bg-primary/90"
@@ -256,15 +268,26 @@ export default function SettingsPage() {
                         id="currentPassword"
                         type={showCurrentPassword ? "text" : "password"}
                         value={securityData.currentPassword}
-                        onChange={(e) => setSecurityData({...securityData, currentPassword: e.target.value})}
+                        onChange={(e) =>
+                          setSecurityData({
+                            ...securityData,
+                            currentPassword: e.target.value,
+                          })
+                        }
                         className="focus:ring-primary focus:border-primary pr-10"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                        onClick={() =>
+                          setShowCurrentPassword(!showCurrentPassword)
+                        }
                         className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                       >
-                        {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showCurrentPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -276,7 +299,12 @@ export default function SettingsPage() {
                           id="newPassword"
                           type={showNewPassword ? "text" : "password"}
                           value={securityData.newPassword}
-                          onChange={(e) => setSecurityData({...securityData, newPassword: e.target.value})}
+                          onChange={(e) =>
+                            setSecurityData({
+                              ...securityData,
+                              newPassword: e.target.value,
+                            })
+                          }
                           className="focus:ring-primary focus:border-primary pr-10"
                         />
                         <button
@@ -284,42 +312,68 @@ export default function SettingsPage() {
                           onClick={() => setShowNewPassword(!showNewPassword)}
                           className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                         >
-                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          {showNewPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </div>
                     <div>
-                      <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                      <Label htmlFor="confirmPassword">
+                        Confirm New Password
+                      </Label>
                       <div className="relative">
                         <Input
                           id="confirmPassword"
                           type={showConfirmPassword ? "text" : "password"}
                           value={securityData.confirmPassword}
-                          onChange={(e) => setSecurityData({...securityData, confirmPassword: e.target.value})}
+                          onChange={(e) =>
+                            setSecurityData({
+                              ...securityData,
+                              confirmPassword: e.target.value,
+                            })
+                          }
                           className="focus:ring-primary focus:border-primary pr-10"
                         />
                         <button
                           type="button"
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          onClick={() =>
+                            setShowConfirmPassword(!showConfirmPassword)
+                          }
                           className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                         >
-                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          {showConfirmPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label htmlFor="twoFactor">Two-Factor Authentication</Label>
-                      <p className="text-sm text-gray-600">Add an extra layer of security to your account</p>
+                      <Label htmlFor="twoFactor">
+                        Two-Factor Authentication
+                      </Label>
+                      <p className="text-sm text-gray-600">
+                        Add an extra layer of security to your account
+                      </p>
                     </div>
                     <Switch
                       id="twoFactor"
                       checked={securityData.twoFactorEnabled}
-                      onCheckedChange={(checked) => setSecurityData({...securityData, twoFactorEnabled: checked})}
+                      onCheckedChange={(checked) =>
+                        setSecurityData({
+                          ...securityData,
+                          twoFactorEnabled: checked,
+                        })
+                      }
                     />
                   </div>
-                  <Button 
+                  <Button
                     onClick={handleSecuritySave}
                     disabled={loading}
                     className="bg-primary hover:bg-primary/90"
@@ -346,50 +400,83 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <Label>Email Notifications</Label>
-                        <p className="text-sm text-gray-600">Receive notifications via email</p>
+                        <p className="text-sm text-gray-600">
+                          Receive notifications via email
+                        </p>
                       </div>
                       <Switch
                         checked={notificationData.emailNotifications}
-                        onCheckedChange={(checked) => setNotificationData({...notificationData, emailNotifications: checked})}
+                        onCheckedChange={(checked) =>
+                          setNotificationData({
+                            ...notificationData,
+                            emailNotifications: checked,
+                          })
+                        }
                       />
                     </div>
                     <Separator />
                     <div className="flex items-center justify-between">
                       <div>
                         <Label>Document Assignments</Label>
-                        <p className="text-sm text-gray-600">When documents are assigned to you</p>
+                        <p className="text-sm text-gray-600">
+                          When documents are assigned to you
+                        </p>
                       </div>
                       <Switch
                         checked={notificationData.documentAssignments}
-                        onCheckedChange={(checked) => setNotificationData({...notificationData, documentAssignments: checked})}
+                        onCheckedChange={(checked) =>
+                          setNotificationData({
+                            ...notificationData,
+                            documentAssignments: checked,
+                          })
+                        }
                       />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <Label>Annotation Updates</Label>
-                        <p className="text-sm text-gray-600">When someone adds annotations to your documents</p>
+                        <p className="text-sm text-gray-600">
+                          When someone adds annotations to your documents
+                        </p>
                       </div>
                       <Switch
                         checked={notificationData.annotationUpdates}
-                        onCheckedChange={(checked) => setNotificationData({...notificationData, annotationUpdates: checked})}
+                        onCheckedChange={(checked) =>
+                          setNotificationData({
+                            ...notificationData,
+                            annotationUpdates: checked,
+                          })
+                        }
                       />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <Label>System Updates</Label>
-                        <p className="text-sm text-gray-600">Important system announcements and updates</p>
+                        <p className="text-sm text-gray-600">
+                          Important system announcements and updates
+                        </p>
                       </div>
                       <Switch
                         checked={notificationData.systemUpdates}
-                        onCheckedChange={(checked) => setNotificationData({...notificationData, systemUpdates: checked})}
+                        onCheckedChange={(checked) =>
+                          setNotificationData({
+                            ...notificationData,
+                            systemUpdates: checked,
+                          })
+                        }
                       />
                     </div>
                   </div>
                   <div>
                     <Label htmlFor="frequency">Notification Frequency</Label>
-                    <Select 
-                      value={notificationData.frequency} 
-                      onValueChange={(value) => setNotificationData({...notificationData, frequency: value})}
+                    <Select
+                      value={notificationData.frequency}
+                      onValueChange={(value) =>
+                        setNotificationData({
+                          ...notificationData,
+                          frequency: value,
+                        })
+                      }
                     >
                       <SelectTrigger className="focus:ring-primary focus:border-primary">
                         <SelectValue />
@@ -402,7 +489,7 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button 
+                  <Button
                     onClick={handleNotificationSave}
                     disabled={loading}
                     className="bg-primary hover:bg-primary/90"
@@ -428,9 +515,11 @@ export default function SettingsPage() {
                   <div className="grid gap-4 md:grid-cols-3">
                     <div>
                       <Label htmlFor="theme">Theme</Label>
-                      <Select 
-                        value={appearanceData.theme} 
-                        onValueChange={(value) => setAppearanceData({...appearanceData, theme: value})}
+                      <Select
+                        value={appearanceData.theme}
+                        onValueChange={(value) =>
+                          setAppearanceData({ ...appearanceData, theme: value })
+                        }
                       >
                         <SelectTrigger className="focus:ring-primary focus:border-primary">
                           <SelectValue />
@@ -444,9 +533,14 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <Label htmlFor="language">Language</Label>
-                      <Select 
-                        value={appearanceData.language} 
-                        onValueChange={(value) => setAppearanceData({...appearanceData, language: value})}
+                      <Select
+                        value={appearanceData.language}
+                        onValueChange={(value) =>
+                          setAppearanceData({
+                            ...appearanceData,
+                            language: value,
+                          })
+                        }
                       >
                         <SelectTrigger className="focus:ring-primary focus:border-primary">
                           <SelectValue />
@@ -461,24 +555,37 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <Label htmlFor="timezone">Timezone</Label>
-                      <Select 
-                        value={appearanceData.timezone} 
-                        onValueChange={(value) => setAppearanceData({...appearanceData, timezone: value})}
+                      <Select
+                        value={appearanceData.timezone}
+                        onValueChange={(value) =>
+                          setAppearanceData({
+                            ...appearanceData,
+                            timezone: value,
+                          })
+                        }
                       >
                         <SelectTrigger className="focus:ring-primary focus:border-primary">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="UTC">UTC</SelectItem>
-                          <SelectItem value="America/New_York">Eastern Time</SelectItem>
-                          <SelectItem value="America/Chicago">Central Time</SelectItem>
-                          <SelectItem value="America/Denver">Mountain Time</SelectItem>
-                          <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                          <SelectItem value="America/New_York">
+                            Eastern Time
+                          </SelectItem>
+                          <SelectItem value="America/Chicago">
+                            Central Time
+                          </SelectItem>
+                          <SelectItem value="America/Denver">
+                            Mountain Time
+                          </SelectItem>
+                          <SelectItem value="America/Los_Angeles">
+                            Pacific Time
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <Button 
+                  <Button
                     onClick={handleAppearanceSave}
                     disabled={loading}
                     className="bg-primary hover:bg-primary/90"

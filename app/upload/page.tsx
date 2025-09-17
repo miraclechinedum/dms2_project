@@ -44,7 +44,9 @@ interface User {
 export default function UploadPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assignmentType, setAssignmentType] = useState<"user" | "department">("department");
+  const [assignmentType, setAssignmentType] = useState<"user" | "department">(
+    "department"
+  );
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -116,7 +118,7 @@ export default function UploadPage() {
     if (checked) {
       setSelectedUsers([...selectedUsers, userId]);
     } else {
-      setSelectedUsers(selectedUsers.filter(id => id !== userId));
+      setSelectedUsers(selectedUsers.filter((id) => id !== userId));
     }
   };
 
@@ -124,7 +126,7 @@ export default function UploadPage() {
     if (checked) {
       setSelectedDepartments([...selectedDepartments, deptId]);
     } else {
-      setSelectedDepartments(selectedDepartments.filter(id => id !== deptId));
+      setSelectedDepartments(selectedDepartments.filter((id) => id !== deptId));
     }
   };
 
@@ -153,20 +155,20 @@ export default function UploadPage() {
       formData.append("title", title);
       formData.append("description", description);
       formData.append("assignmentType", assignmentType);
-      
+
       if (assignmentType === "user") {
-        selectedUsers.forEach(userId => {
+        selectedUsers.forEach((userId) => {
           formData.append("assignedUsers", userId);
         });
       } else {
-        selectedDepartments.forEach(deptId => {
+        selectedDepartments.forEach((deptId) => {
           formData.append("assignedDepartments", deptId);
         });
       }
 
       // Simulate upload progress
       const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
+        setUploadProgress((prev) => {
           if (prev >= 90) {
             clearInterval(progressInterval);
             return prev;
@@ -189,11 +191,10 @@ export default function UploadPage() {
       }
 
       toast.success("Document uploaded successfully!");
-      
+
       setTimeout(() => {
         router.push("/documents");
       }, 1000);
-
     } catch (error) {
       console.error("Upload error:", error);
       toast.error(
@@ -211,214 +212,224 @@ export default function UploadPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
       <main className="flex-1 overflow-auto p-6">
         <div className="max-w-2xl mx-auto">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Upload Document
-            </CardTitle>
-            <CardDescription>
-              Upload a PDF document and assign it to users or departments
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Document Details */}
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="title">Document Title *</Label>
-                <Input
-                  id="title"
-                  placeholder="Enter document title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Enter document description (optional)"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                />
-              </div>
-            </div>
-
-            {/* Assignment Type */}
-            <div>
-              <Label>Assignment Type *</Label>
-              <Select
-                value={assignmentType}
-                onValueChange={(value: "user" | "department") => {
-                  setAssignmentType(value);
-                  setSelectedUsers([]);
-                  setSelectedDepartments([]);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Assign to Users
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="department">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      Assign to Departments
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* User Selection */}
-            {assignmentType === "user" && (
-              <div>
-                <Label>Select Users *</Label>
-                <Card className="p-4">
-                  <div className="space-y-3 max-h-48 overflow-y-auto">
-                    {users.map((user) => (
-                      <div key={user.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`user-${user.id}`}
-                          checked={selectedUsers.includes(user.id)}
-                          onCheckedChange={(checked) =>
-                            handleUserSelection(user.id, checked as boolean)
-                          }
-                        />
-                        <Label
-                          htmlFor={`user-${user.id}`}
-                          className="text-sm font-normal cursor-pointer flex-1"
-                        >
-                          {user.name} ({user.email})
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                  {selectedUsers.length > 0 && (
-                    <p className="text-sm text-gray-600 mt-2">
-                      {selectedUsers.length} user(s) selected
-                    </p>
-                  )}
-                </Card>
-              </div>
-            )}
-
-            {/* Department Selection */}
-            {assignmentType === "department" && (
-              <div>
-                <Label>Select Departments *</Label>
-                <Card className="p-4">
-                  <div className="space-y-3 max-h-48 overflow-y-auto">
-                    {departments.map((dept) => (
-                      <div key={dept.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`dept-${dept.id}`}
-                          checked={selectedDepartments.includes(dept.id)}
-                          onCheckedChange={(checked) =>
-                            handleDepartmentSelection(dept.id, checked as boolean)
-                          }
-                        />
-                        <Label
-                          htmlFor={`dept-${dept.id}`}
-                          className="text-sm font-normal cursor-pointer flex-1"
-                        >
-                          {dept.name}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                  {selectedDepartments.length > 0 && (
-                    <p className="text-sm text-gray-600 mt-2">
-                      {selectedDepartments.length} department(s) selected
-                    </p>
-                  )}
-                </Card>
-              </div>
-            )}
-
-            {/* File Upload Area */}
-            <div>
-              <Label>Upload PDF File *</Label>
-              <div
-                {...getRootProps()}
-                className={cn(
-                  "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
-                  isDragActive
-                    ? "border-blue-500 bg-blue-50"
-                    : selectedFile
-                    ? "border-green-500 bg-green-50"
-                    : "border-gray-300 hover:border-gray-400"
-                )}
-              >
-                <input {...getInputProps()} />
-                {selectedFile ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <FileText className="h-8 w-8 text-green-600" />
-                    <div>
-                      <p className="font-medium text-green-700">
-                        {selectedFile.name}
-                      </p>
-                      <p className="text-sm text-green-600">
-                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedFile(null);
-                      }}
-                    >
-                      <X size={16} />
-                    </Button>
-                  </div>
-                ) : (
-                  <div>
-                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-lg font-medium text-gray-700">
-                      {isDragActive
-                        ? "Drop your PDF here"
-                        : "Drag & drop a PDF file here"}
-                    </p>
-                    <p className="text-sm text-gray-500">or click to browse</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Upload Progress */}
-            {isUploading && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Uploading...</span>
-                  <span>{Math.round(uploadProgress)}%</span>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Upload Document
+              </CardTitle>
+              <CardDescription>
+                Upload a PDF document and assign it to users or departments
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Document Details */}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="title">Document Title *</Label>
+                  <Input
+                    id="title"
+                    placeholder="Enter document title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                  />
                 </div>
-                <Progress value={uploadProgress} className="w-full" />
-              </div>
-            )}
 
-            <Button
-              onClick={uploadDocument}
-              disabled={!selectedFile || !title || isUploading}
-              className="w-full"
-            >
-              {isUploading ? "Uploading..." : "Upload Document"}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Enter document description (optional)"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Assignment Type */}
+              <div>
+                <Label>Assignment Type *</Label>
+                <Select
+                  value={assignmentType}
+                  onValueChange={(value: "user" | "department") => {
+                    setAssignmentType(value);
+                    setSelectedUsers([]);
+                    setSelectedDepartments([]);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Assign to Users
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="department">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        Assign to Departments
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* User Selection */}
+              {assignmentType === "user" && (
+                <div>
+                  <Label>Select Users *</Label>
+                  <Card className="p-4">
+                    <div className="space-y-3 max-h-48 overflow-y-auto">
+                      {users.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`user-${user.id}`}
+                            checked={selectedUsers.includes(user.id)}
+                            onCheckedChange={(checked) =>
+                              handleUserSelection(user.id, checked as boolean)
+                            }
+                          />
+                          <Label
+                            htmlFor={`user-${user.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            {user.name} ({user.email})
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedUsers.length > 0 && (
+                      <p className="text-sm text-gray-600 mt-2">
+                        {selectedUsers.length} user(s) selected
+                      </p>
+                    )}
+                  </Card>
+                </div>
+              )}
+
+              {/* Department Selection */}
+              {assignmentType === "department" && (
+                <div>
+                  <Label>Select Departments *</Label>
+                  <Card className="p-4">
+                    <div className="space-y-3 max-h-48 overflow-y-auto">
+                      {departments.map((dept) => (
+                        <div
+                          key={dept.id}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`dept-${dept.id}`}
+                            checked={selectedDepartments.includes(dept.id)}
+                            onCheckedChange={(checked) =>
+                              handleDepartmentSelection(
+                                dept.id,
+                                checked as boolean
+                              )
+                            }
+                          />
+                          <Label
+                            htmlFor={`dept-${dept.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            {dept.name}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedDepartments.length > 0 && (
+                      <p className="text-sm text-gray-600 mt-2">
+                        {selectedDepartments.length} department(s) selected
+                      </p>
+                    )}
+                  </Card>
+                </div>
+              )}
+
+              {/* File Upload Area */}
+              <div>
+                <Label>Upload PDF File *</Label>
+                <div
+                  {...getRootProps()}
+                  className={cn(
+                    "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
+                    isDragActive
+                      ? "border-blue-500 bg-blue-50"
+                      : selectedFile
+                      ? "border-green-500 bg-green-50"
+                      : "border-gray-300 hover:border-gray-400"
+                  )}
+                >
+                  <input {...getInputProps()} />
+                  {selectedFile ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <FileText className="h-8 w-8 text-green-600" />
+                      <div>
+                        <p className="font-medium text-green-700">
+                          {selectedFile.name}
+                        </p>
+                        <p className="text-sm text-green-600">
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFile(null);
+                        }}
+                      >
+                        <X size={16} />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg font-medium text-gray-700">
+                        {isDragActive
+                          ? "Drop your PDF here"
+                          : "Drag & drop a PDF file here"}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        or click to browse
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Upload Progress */}
+              {isUploading && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Uploading...</span>
+                    <span>{Math.round(uploadProgress)}%</span>
+                  </div>
+                  <Progress value={uploadProgress} className="w-full" />
+                </div>
+              )}
+
+              <Button
+                onClick={uploadDocument}
+                disabled={!selectedFile || !title || isUploading}
+                className="w-full"
+              >
+                {isUploading ? "Uploading..." : "Upload Document"}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </main>
     </div>
   );

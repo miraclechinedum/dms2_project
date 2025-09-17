@@ -1,3 +1,4 @@
+// components/layout/sidebar.tsx
 "use client";
 
 import { useState } from "react";
@@ -19,85 +20,47 @@ import {
   Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSidebarContext } from "./sidebar-context";
 
 export function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const { profile, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { isCollapsed, toggle } = useSidebarContext();
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: Home, route: "/dashboard" },
-    {
-      id: "documents",
-      label: "Documents",
-      icon: FileText,
-      route: "/documents",
-    },
+    { id: "documents", label: "Documents", icon: FileText, route: "/documents" },
     { id: "users", label: "Users", icon: Users, route: "/users" },
-    {
-      id: "departments",
-      label: "Departments",
-      icon: Building2,
-      route: "/departments",
-    },
-    {
-      id: "notifications",
-      label: "Notifications",
-      icon: Bell,
-      route: "/notifications",
-    },
-    {
-      id: "activity",
-      label: "Activity Log",
-      icon: Activity,
-      route: "/activity",
-    },
+    { id: "departments", label: "Departments", icon: Building2, route: "/departments" },
+    { id: "notifications", label: "Notifications", icon: Bell, route: "/notifications" },
+    { id: "activity", label: "Activity Log", icon: Activity, route: "/activity" },
     { id: "settings", label: "Settings", icon: Settings, route: "/settings" },
   ];
 
-  const handleSignOut = async () => {
-    await signOut();
-    router.push("/");
-  };
-
-  const handleNavigation = (route: string) => {
-    router.push(route);
-  };
-
-  // Determine active view based on current pathname
-  const getActiveView = () => {
-    const currentItem = menuItems.find((item) =>
-      pathname.startsWith(item.route)
-    );
-    return currentItem?.id || "dashboard";
-  };
-
-  const activeView = getActiveView();
+  const activeView = menuItems.find((item) => pathname?.startsWith(item.route))?.id ?? "dashboard";
 
   return (
-    <div
+    // fixed on md+; on small screens keep positioned relative so it can be used as a top bar or off-canvas
+    <aside
       className={cn(
-        "flex flex-col h-screen bg-white border-r border-gray-200 transition-all duration-300",
-        isCollapsed ? "w-16" : "w-64"
+        "bg-white border-r border-gray-200 transition-all duration-300 z-50",
+        // width: w-64 (256px) when expanded, w-16 (64px) when collapsed
+        isCollapsed ? "w-16" : "w-64",
+        // fixed layout on md+ (desktop)
+        "md:fixed md:inset-y-0 md:left-0 md:top-0",
+        // small-screen behavior: stick to top in flow
+        "flex-shrink-0 flex flex-col h-screen"
       )}
+      style={{ minWidth: isCollapsed ? 64 : 256 }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
-        {!isCollapsed && (
-          <h1 className="text-xl font-bold text-gray-900">DocuFlow</h1>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="ml-auto"
-        >
+        {!isCollapsed && <h1 className="text-xl font-bold text-gray-900">DocuFlow</h1>}
+        <Button variant="ghost" size="sm" onClick={toggle}>
           {isCollapsed ? <Menu size={16} /> : <X size={16} />}
         </Button>
       </div>
 
-      {/* User Info */}
       {!isCollapsed && profile && (
         <div className="p-4 border-b bg-gray-50">
           <p className="font-medium text-sm text-gray-900">{profile.name}</p>
@@ -105,7 +68,6 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Navigation */}
       <ScrollArea className="flex-1 p-4">
         <nav className="space-y-2">
           {menuItems.map((item) => {
@@ -116,12 +78,10 @@ export function Sidebar() {
                 variant={activeView === item.id ? "default" : "ghost"}
                 className={cn(
                   "w-full justify-start transition-all duration-200",
-                  activeView === item.id 
-                    ? "bg-primary text-white shadow-sm" 
-                    : "hover:bg-primary/10 hover:text-primary",
+                  activeView === item.id ? "bg-primary text-white shadow-sm" : "hover:bg-primary/10 hover:text-primary",
                   isCollapsed ? "px-2" : "px-3"
                 )}
-                onClick={() => handleNavigation(item.route)}
+                onClick={() => router.push(item.route)}
               >
                 <Icon size={16} />
                 {!isCollapsed && <span className="ml-2">{item.label}</span>}
@@ -131,20 +91,12 @@ export function Sidebar() {
         </nav>
       </ScrollArea>
 
-      {/* Footer */}
       <div className="p-4 border-t">
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors",
-            isCollapsed ? "px-2" : "px-3"
-          )}
-          onClick={handleSignOut}
-        >
+        <Button variant="ghost" className={cn("w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50", isCollapsed ? "px-2" : "px-3")} onClick={async () => { await signOut(); router.push("/"); }}>
           <LogOut size={16} />
           {!isCollapsed && <span className="ml-2">Sign Out</span>}
         </Button>
       </div>
-    </div>
+    </aside>
   );
 }

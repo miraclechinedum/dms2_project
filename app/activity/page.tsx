@@ -67,7 +67,10 @@ export default function ActivityPage() {
     fetchActivities();
   }, [user, router]);
 
-  const fetchActivities = async (dateRange?: { start: string; end: string }) => {
+  const fetchActivities = async (dateRange?: {
+    start: string;
+    end: string;
+  }) => {
     setLoading(true);
     try {
       let url = "/api/activity";
@@ -130,9 +133,7 @@ export default function ActivityPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="flex h-screen">
-          <Sidebar />
           <div className="flex-1 flex flex-col">
-            <Header />
             <main className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -148,27 +149,35 @@ export default function ActivityPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
-        <Sidebar />
         <div className="flex-1 flex flex-col">
-          <Header />
           <main className="flex-1 overflow-auto p-6 page-transition">
             <div className="space-y-6">
               {/* Header */}
               <div>
-                <h2 className="text-3xl font-bold text-gray-900">Activity Log</h2>
-                <p className="text-gray-600">Track all system activities and changes</p>
+                <h2 className="text-3xl font-bold text-gray-900">
+                  Activity Log
+                </h2>
+                <p className="text-gray-600">
+                  Track all system activities and changes
+                </p>
               </div>
 
               {/* Stats Cards */}
               <div className="grid gap-4 md:grid-cols-3">
                 <Card className="shadow-sm">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">This Month</CardTitle>
+                    <CardTitle className="text-sm font-medium">
+                      This Month
+                    </CardTitle>
                     <Calendar className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-primary">{stats.currentMonth}</div>
-                    <p className="text-xs text-muted-foreground">Total activities</p>
+                    <div className="text-2xl font-bold text-primary">
+                      {stats.currentMonth}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Total activities
+                    </p>
                   </CardContent>
                 </Card>
 
@@ -178,19 +187,29 @@ export default function ActivityPage() {
                     <Activity className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-primary">{stats.currentDay}</div>
-                    <p className="text-xs text-muted-foreground">Activities today</p>
+                    <div className="text-2xl font-bold text-primary">
+                      {stats.currentDay}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Activities today
+                    </p>
                   </CardContent>
                 </Card>
 
                 <Card className="shadow-sm">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">This Week</CardTitle>
+                    <CardTitle className="text-sm font-medium">
+                      This Week
+                    </CardTitle>
                     <Calendar className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-primary">{stats.currentWeek}</div>
-                    <p className="text-xs text-muted-foreground">Activities this week</p>
+                    <div className="text-2xl font-bold text-primary">
+                      {stats.currentWeek}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Activities this week
+                    </p>
                   </CardContent>
                 </Card>
               </div>
@@ -221,17 +240,14 @@ export default function ActivityPage() {
                         className="focus:ring-primary focus:border-primary"
                       />
                     </div>
-                    <Button 
+                    <Button
                       onClick={handleDateFilter}
                       className="bg-primary hover:bg-primary/90"
                     >
                       <Filter className="h-4 w-4 mr-2" />
                       Filter
                     </Button>
-                    <Button 
-                      variant="outline"
-                      onClick={clearDateFilter}
-                    >
+                    <Button variant="outline" onClick={clearDateFilter}>
                       Clear
                     </Button>
                   </div>
@@ -272,16 +288,25 @@ export default function ActivityPage() {
                         </TableHeader>
                         <TableBody>
                           {activities.map((activity, index) => (
-                            <TableRow key={activity.id} className="hover:bg-gray-50 transition-colors">
+                            <TableRow
+                              key={activity.id}
+                              className="hover:bg-gray-50 transition-colors"
+                            >
                               <TableCell className="font-medium">
                                 {index + 1}
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <div className={`p-1 rounded-full ${getActionColor(activity.action)}`}>
+                                  <div
+                                    className={`p-1 rounded-full ${getActionColor(
+                                      activity.action
+                                    )}`}
+                                  >
                                     {getActionIcon(activity.action)}
                                   </div>
-                                  <Badge className={getActionColor(activity.action)}>
+                                  <Badge
+                                    className={getActionColor(activity.action)}
+                                  >
                                     {activity.action.replace("_", " ")}
                                   </Badge>
                                 </div>
@@ -289,14 +314,16 @@ export default function ActivityPage() {
                               <TableCell>
                                 <div className="flex items-center gap-2">
                                   <User className="h-4 w-4 text-gray-400" />
-                                  <span>{activity.user_name || 'Unknown'}</span>
+                                  <span>{activity.user_name || "Unknown"}</span>
                                 </div>
                               </TableCell>
                               <TableCell>
                                 {activity.document_title ? (
                                   <div className="flex items-center gap-2">
                                     <FileText className="h-4 w-4 text-primary" />
-                                    <span className="truncate max-w-xs">{activity.document_title}</span>
+                                    <span className="truncate max-w-xs">
+                                      {activity.document_title}
+                                    </span>
                                   </div>
                                 ) : (
                                   <span className="text-gray-400">-</span>
@@ -305,7 +332,12 @@ export default function ActivityPage() {
                               <TableCell>
                                 <div className="flex items-center gap-2">
                                   <Calendar className="h-4 w-4 text-gray-400" />
-                                  <span>{format(new Date(activity.created_at), "MMM dd, yyyy HH:mm")}</span>
+                                  <span>
+                                    {format(
+                                      new Date(activity.created_at),
+                                      "MMM dd, yyyy HH:mm"
+                                    )}
+                                  </span>
                                 </div>
                               </TableCell>
                             </TableRow>

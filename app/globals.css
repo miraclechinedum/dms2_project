@@ -83,8 +83,14 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Smooth page transitions */
@@ -93,8 +99,14 @@
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 @layer base {
   * {
@@ -103,4 +115,30 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* globals.css (append) */
+
+/* Ensure the body doesn't show double scrollbars on desktop */
+html,
+body,
+#__next {
+  height: 100%;
+}
+
+/* fade-in-down animation used by header dropdown */
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tailwind style data- attribute selector for the dropdown content */
+[data-state="open"] {
+  animation: fade-in-down 180ms ease-out;
 }

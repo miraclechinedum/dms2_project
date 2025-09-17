@@ -1,7 +1,9 @@
+// app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { AuthProvider } from "@/hooks/use-auth"; // Import the AuthProvider
+import { AuthProvider } from "@/hooks/use-auth";
+import AppLayout from "@/components/layout/app-layout";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,9 +21,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          {" "}
-          {/* Wrap children with AuthProvider */}
-          {children}
+          <AppLayout>{children}</AppLayout>
         </AuthProvider>
       </body>
     </html>
