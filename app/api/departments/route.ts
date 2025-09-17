@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const sql = 'SELECT * FROM departments ORDER BY name';
+    const sql = 'SELECT id, name, description, created_at, created_by, people_count AS user_count FROM departments ORDER BY name';
     const departments = await DatabaseService.query(sql);
 
     return NextResponse.json({ departments });
@@ -30,41 +30,59 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const token = request.cookies.get('auth-token')?.value;
+    const token = request.cookies.get("auth-token")?.value;
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const decoded = await Promise.resolve(AuthService.verifyToken(token));
     if (!decoded) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const { name, description } = await request.json();
+    const { name, email, password, departmentId } = await request.json();
 
-    if (!name) {
-      return NextResponse.json({ error: 'Department name is required' }, { status: 400 });
+    if (!name || !email || !password || !departmentId) {
+      return NextResponse.json(
+        { error: "All fields are required" },
+        { status: 400 }
+      );
     }
 
-    const departmentId = `dept_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    const sql = `
-      INSERT INTO departments (id, name, description, created_at)
-      VALUES (?, ?, ?, NOW())
-    `;
+    // Check if user already exists
+    const existingUser = await AuthService.getUserByEmail(email);
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "User with this email already exists" },
+        { status: 400 }
+      );
+    }
 
-    await DatabaseService.query(sql, [departmentId, name, description || '']);
+    // Create user
+    const user = await AuthService.createUser(
+      email,
+      password,
+      name,
+      departmentId
+    );
 
-    return NextResponse.json({ 
-      message: 'Department created successfully',
-      departmentId 
+    // Increment people_count for the assigned department
+    await DatabaseService.query(
+      `UPDATE departments SET people_count = people_count + 1 WHERE id = ?`,
+      [departmentId]
+    );
+
+    return NextResponse.json({
+      message: "User created successfully",
+      userId: user.id,
     });
-
   } catch (error) {
-    console.error('Create department error:', error);
+    console.error("Create user error:", error);
     return NextResponse.json(
-      { error: 'Failed to create department' },
+      { error: error instanceof Error ? error.message : "Failed to create user" },
       { status: 500 }
     );
   }
 }
+
+

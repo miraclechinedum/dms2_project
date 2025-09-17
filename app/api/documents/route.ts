@@ -31,10 +31,12 @@ export async function GET(request: NextRequest) {
 
     console.log("✅ Fetching documents for user:", userId);
 
-    // NOTE:
-    // This query returns documents along with uploader name and (if present)
-    // assigned user / assigned department names. Adjust column/table names
-    // if your schema differs.
+    // First fetch user department
+    const userSql = `SELECT department_id FROM users WHERE id = ?`;
+    const userRes: any = await DatabaseService.query(userSql, [userId]);
+    const departmentId = userRes[0]?.department_id ?? null;
+
+    // Fetch documents assigned to user, their department, OR uploaded by them
     const sql = `
       SELECT
         d.id,
@@ -54,20 +56,25 @@ export async function GET(request: NextRequest) {
       LEFT JOIN users u ON u.id = d.uploaded_by
       LEFT JOIN users au ON au.id = d.assigned_to_user
       LEFT JOIN departments ad ON ad.id = d.assigned_to_department
+      WHERE d.assigned_to_user = ? 
+         OR d.assigned_to_department = ? 
+         OR d.uploaded_by = ?
       ORDER BY d.created_at DESC
     `;
 
-    // Execute query. DatabaseService.query may return rows or [rows, fields] depending on implementation.
-    const result: any = await DatabaseService.query(sql, []);
+    const result: any = await DatabaseService.query(sql, [
+      userId,
+      departmentId,
+      userId,
+    ]);
+
     // Normalize to rows array:
     let rows: any[] = Array.isArray(result)
-      ? // If result is like [rows, fields] then result[0] is rows
-        Array.isArray(result[0])
+      ? Array.isArray(result[0])
         ? result[0]
         : result
       : [];
 
-    // Defensive: if rows is not an array, make it an empty array
     if (!Array.isArray(rows)) rows = [];
 
     console.log("📄 Found documents:", rows.length);
@@ -76,8 +83,6 @@ export async function GET(request: NextRequest) {
     const documents = rows.map((r: any) => {
       const assignments: any[] = [];
 
-      // If your app only stores a single assigned user/department per document,
-      // create assignments array accordingly so the frontend has consistent shape.
       if (r.assigned_to_user) {
         assignments.push({
           id: r.assigned_to_user,
@@ -101,9 +106,12 @@ export async function GET(request: NextRequest) {
       return {
         id: r.id,
         title: r.title,
-        file_path: r.file_path, // This is now the Cloudinary URL
-        file_url: r.file_path,  // Same as file_path since it's already a full URL
-        file_size: typeof r.file_size === "number" ? r.file_size : Number(r.file_size ?? 0),
+        file_path: r.file_path,
+        file_url: r.file_path, // same as file_path (Cloudinary URL)
+        file_size:
+          typeof r.file_size === "number"
+            ? r.file_size
+            : Number(r.file_size ?? 0),
         uploaded_by: r.uploaded_by,
         uploader_name: r.uploader_name ?? null,
         status: r.status ?? "active",

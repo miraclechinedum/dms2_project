@@ -49,19 +49,35 @@ export class AuthService {
     }
   }
 
-  static async createUser(email: string, password: string, fullName: string, departmentId: string): Promise<User> {
-    const hashedPassword = await this.hashPassword(password);
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    const sql = `
-      INSERT INTO users (id, email, password_hash, name, department_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-    `;
-    
-    await DatabaseService.query(sql, [userId, email, hashedPassword, fullName, departmentId]);
-    
-    return this.getUserById(userId);
-  }
+  static async createUser(
+  email: string,
+  password: string,
+  name: string,
+  departmentId: string,
+  createdBy: string | null
+) {
+  const hashedPassword = await bcrypt.hash(password, 12);
+
+  // Generate UUID in JS so we can return it
+  const [userIdRow] = await DatabaseService.query(`SELECT UUID() as uuid`);
+  const userId = userIdRow.uuid;
+
+  const sql = `
+    INSERT INTO users (id, name, email, password_hash, department_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+  `;
+
+  await DatabaseService.query(sql, [
+    userId,
+    name,
+    email,
+    hashedPassword,
+    departmentId,
+    createdBy ?? null, // ensures it's never undefined
+  ]);
+
+  return { id: userId };
+}
 
   static async authenticateUser(email: string, password: string): Promise<{ user: User; token: string } | null> {
     const sql = `
