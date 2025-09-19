@@ -299,7 +299,7 @@ export default function DocumentViewerPage() {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex overflow-auto">
             {/* PDF Viewer */}
             <div className="flex-1 bg-gray-100">
               {document.file_url && (
