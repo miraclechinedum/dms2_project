@@ -51,6 +51,41 @@ interface DocumentData {
   assigned_department_name?: string;
 }
 
+// Helper function to format datetime in a more readable format
+const formatDateTime = (dateString: string) => {
+  try {
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const month = date.toLocaleDateString("en-US", { month: "short" });
+    const year = date.getFullYear();
+    const time = date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    // Add ordinal suffix to day
+    const getOrdinalSuffix = (d: number) => {
+      if (d > 3 && d < 21) return "th";
+      switch (d % 10) {
+        case 1:
+          return "st";
+        case 2:
+          return "nd";
+        case 3:
+          return "rd";
+        default:
+          return "th";
+      }
+    };
+
+    return `${day}${getOrdinalSuffix(day)} ${month}, ${year} ${time}`;
+  } catch (e) {
+    // fallback to original string
+    return dateString;
+  }
+};
+
 export default function DocumentViewerPage() {
   const params = useParams();
   const router = useRouter();
@@ -70,6 +105,7 @@ export default function DocumentViewerPage() {
     if (params.id) {
       fetchDocument();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, params.id]);
 
   // Fetch annotations when document changes
@@ -388,12 +424,7 @@ export default function DocumentViewerPage() {
 
                         <div className="flex items-center justify-between text-xs text-gray-500">
                           <span>by {annotation.user_name}</span>
-                          <span>
-                            {format(
-                              new Date(annotation.created_at),
-                              "MMM dd, HH:mm"
-                            )}
-                          </span>
+                          <span>{formatDateTime(annotation.created_at)}</span>
                         </div>
                       </Card>
                     ))

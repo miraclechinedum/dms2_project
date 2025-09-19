@@ -1,7 +1,6 @@
-// components/pdf/WebViewer.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import WebViewer from "@pdftron/webviewer";
 import { CustomToolbar } from "./CustomToolbar";
 
@@ -26,7 +25,7 @@ interface WebViewerProps {
   currentUserName: string;
   onAnnotationSave: (annotation: Annotation) => void;
   onAnnotationDelete: (annotationId: string) => void;
-  existingAnnotations: Annotation[];
+  existingAnnotations: Annotation[]; // passed from parent (may be empty)
 }
 
 export default function WebViewerComponent({
@@ -36,37 +35,81 @@ export default function WebViewerComponent({
   currentUserName,
   onAnnotationSave,
   onAnnotationDelete,
-  existingAnnotations = [],
+  existingAnnotations,
 }: WebViewerProps) {
-  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const viewer = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<any>(null);
-  const autoImportIntervalRef = useRef<number | null>(null);
-  const saveTimeoutRef = useRef<number | null>(null);
   const [selectedTool, setSelectedTool] = useState<string>("select");
   const [selectedColor, setSelectedColor] = useState<string>("#FFE066");
   const [zoomLevel, setZoomLevel] = useState<number>(100);
-  const [isReady, setIsReady] = useState(false);
-  const [initError, setInitError] = useState<string | null>(null);
-  const [savingNow, setSavingNow] = useState(false);
+  const [viewerReady, setViewerReady] = useState(false);
 
-  // Safe helpers
-  function safeTry<T>(fn: () => T): T | null {
+  // Small util: format ISO to "13th Sept, 2025 2:13pm"
+  const formatDateHuman = (iso?: string) => {
+    if (!iso) return "";
     try {
-      return fn();
+      const d = new Date(iso);
+      const day = d.getDate();
+      const month = d.toLocaleString("en-US", { month: "short" });
+      const year = d.getFullYear();
+      let hours = d.getHours();
+      const minutes = d.getMinutes();
+      const ampm = hours >= 12 ? "pm" : "am";
+      hours = hours % 12 || 12;
+      const minuteStr = String(minutes).padStart(2, "0");
+      const ordinal = (n: number) => {
+        if (n % 10 === 1 && n % 100 !== 11) return `${n}st`;
+        if (n % 10 === 2 && n % 100 !== 12) return `${n}nd`;
+        if (n % 10 === 3 && n % 100 !== 13) return `${n}rd`;
+        return `${n}th`;
+      };
+      return `${ordinal(day)} ${month}, ${year} ${hours}:${minuteStr}${ampm}`;
     } catch {
-      return null;
+      return iso;
     }
-  }
-  function wait(ms: number) {
-    return new Promise((res) => setTimeout(res, ms));
-  }
+  };
+
+  // Helpers for backwards compatibility with different WebViewer builds
+  const resolveDocumentViewer = (Core: any) => {
+    if (!Core) return null;
+    if (typeof Core.getDocumentViewer === "function")
+      return Core.getDocumentViewer();
+    if (Core.documentViewer) return Core.documentViewer;
+    return null;
+  };
+
+  const resolveAnnotationManager = (Core: any, documentViewer: any) => {
+    if (!Core && !documentViewer) return null;
+    if (
+      Core?.getAnnotationManager &&
+      typeof Core.getAnnotationManager === "function"
+    ) {
+      try {
+        const am = Core.getAnnotationManager();
+        if (am) return am;
+      } catch {}
+    }
+    if (
+      documentViewer?.getAnnotationManager &&
+      typeof documentViewer.getAnnotationManager === "function"
+    ) {
+      try {
+        const am = documentViewer.getAnnotationManager();
+        if (am) return am;
+      } catch {}
+    }
+    if (Core?.annotationManager) return Core.annotationManager;
+    return null;
+  };
 
   useEffect(() => {
-    if (!viewerRef.current) return;
-    setInitError(null);
-    setIsReady(false);
+    if (!viewer.current) return;
 
-    let cancelled = false;
+    // diagnostic log for the weird 500 GET: show documentUrl
+    // Open console and check this value
+    console.info("WebViewer init - documentUrl:", documentUrl);
+
+    let instance: any = null;
 
     WebViewer(
       {
@@ -74,781 +117,585 @@ export default function WebViewerComponent({
         initialDoc: documentUrl,
         licenseKey:
           "demo:1757509875851:604eca4e0300000000877d781419f71633c68ea80c20ad3325f5806b42",
-        ui: "legacy",
-        disabledElements: [
-          "ribbons",
-          "toggleNotesButton",
-          "searchButton",
-          "menuButton",
-          "rubberStampToolGroupButton",
-          "stampToolGroupButton",
-          "fileAttachmentToolGroupButton",
-          "calloutToolGroupButton",
-          "undo",
-          "redo",
-          "eraserToolButton",
-        ],
-        enableFilePicker: false,
+        // If you see the "GET /documents/.HeaderItems..." error, try commenting out the css line below.
+        css: `
+          .HeaderItems, .ToolsHeader, .Header, .MenuOverlay, .LeftPanel, .NotesPanel {
+            display: none !important;
+          }
+        `,
       },
-      viewerRef.current
+      viewer.current
     )
-      .then((instance) => {
-        if (cancelled) {
+      .then((webViewerInstance) => {
+        instance = webViewerInstance;
+        instanceRef.current = instance;
+        const { UI, Core, Annotations } = instance;
+
+        // Attach documentLoaded in a robust way
+        const docViewer = resolveDocumentViewer(Core);
+        const attachLoaded = (dv: any) => {
+          if (!dv) return;
+          if (typeof dv.addEventListener === "function")
+            dv.addEventListener("documentLoaded", onDocumentLoaded);
+          else if (dv.addEvent) dv.addEvent("documentLoaded", onDocumentLoaded);
+        };
+
+        async function onDocumentLoaded() {
           try {
-            instance.UI?.dispose?.();
-          } catch {}
-          return;
+            const documentViewer = resolveDocumentViewer(Core);
+            // hide UI (best-effort)
+            try {
+              UI.setHeaderItems?.(() => {});
+              UI.disableElements?.([
+                "ribbons",
+                "toggleNotesButton",
+                "searchButton",
+                "menuButton",
+                "toolsHeader",
+                "header",
+                "leftPanel",
+                "notesPanel",
+              ]);
+            } catch (e) {
+              console.warn("UI.disableElements failed:", e);
+            }
+
+            const annotationManager = resolveAnnotationManager(
+              Core,
+              documentViewer
+            );
+
+            // import any saved XFDF for this document (if your server stores it)
+            try {
+              if (annotationManager && documentId) {
+                const xfdfRes = await fetch(
+                  `/api/annotations/xfdf?documentId=${encodeURIComponent(
+                    documentId
+                  )}`
+                );
+                if (xfdfRes.ok) {
+                  const xfdfJson = await xfdfRes.json();
+                  const xfdf = xfdfJson?.xfdf;
+                  if (xfdf) {
+                    if (
+                      typeof annotationManager.importAnnotations === "function"
+                    ) {
+                      await annotationManager.importAnnotations(xfdf);
+                    } else if (
+                      typeof annotationManager.importXfdf === "function"
+                    ) {
+                      await annotationManager.importXfdf(xfdf);
+                    } else {
+                      console.warn(
+                        "annotationManager does not expose importAnnotations/importXfdf"
+                      );
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("Failed to fetch/import XFDF:", e);
+            }
+
+            // Attach annotationChanged listener
+            if (
+              annotationManager &&
+              typeof annotationManager.addEventListener === "function"
+            ) {
+              annotationManager.addEventListener(
+                "annotationChanged",
+                async (annotations: any[], action: string) => {
+                  if (!Array.isArray(annotations)) return;
+                  if (action === "add") {
+                    for (const ann of annotations) {
+                      await handleAnnotationAdd(ann, annotationManager);
+                    }
+                  } else if (action === "delete") {
+                    for (const ann of annotations) {
+                      await handleAnnotationDelete(ann);
+                    }
+                  } else if (action === "modify") {
+                    for (const ann of annotations) {
+                      await handleAnnotationModify(ann, annotationManager);
+                    }
+                  }
+                }
+              );
+            }
+
+            // Finally, load per-annotation metadata from props if any
+            await loadExistingAnnotations();
+
+            setViewerReady(true);
+            console.log("✅ WebViewer documentLoaded");
+          } catch (err) {
+            console.error("onDocumentLoaded error:", err);
+          }
         }
 
-        instanceRef.current = instance;
-        console.info(
-          "WebViewer promise resolved. Will wait for documentLoaded and start AUTO-IMPORT loop."
-        );
-
-        // expose for quick manual testing
-        // @ts-ignore
-        window.__PDFTRON_INSTANCE__ = instance;
-
-        // documentLoaded handler (primary import path)
-        instance.UI.addEventListener("documentLoaded", async () => {
-          try {
-            console.info(
-              "documentLoaded event fired (handler). Running setupAfterLoad."
-            );
-            await setupAfterLoad(instance);
-            setIsReady(true);
-          } catch (err) {
-            console.error("Error during setup after documentLoaded:", err);
-            setInitError(String(err ?? "unknown error"));
-          }
-        });
-
-        // Start an AUTO-IMPORT loop as a fallback (handles missed/early documentLoaded)
-        startAutoImportLoop();
+        attachLoaded(docViewer ?? Core?.documentViewer ?? Core);
       })
       .catch((err) => {
-        console.error("WebViewer failed to initialize:", err);
-        setInitError(String(err ?? "WebViewer init failed"));
+        console.error("WebViewer init failed:", err);
       });
 
     return () => {
-      cancelled = true;
-      try {
-        if (saveTimeoutRef.current) {
-          window.clearTimeout(saveTimeoutRef.current);
-          saveTimeoutRef.current = null;
+      if (instance) {
+        try {
+          instance.UI?.closeDocument?.();
+        } catch (e) {
+          console.warn("closeDocument failed:", e);
         }
-        if (autoImportIntervalRef.current) {
-          window.clearInterval(autoImportIntervalRef.current);
-          autoImportIntervalRef.current = null;
-        }
-        instanceRef.current?.UI?.dispose?.();
-      } catch (e) {}
-      instanceRef.current = null;
-      // @ts-ignore
-      if (window.__PDFTRON_INSTANCE__) delete window.__PDFTRON_INSTANCE__;
+        instanceRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentUrl]);
+  }, [documentUrl, documentId]);
 
-  // -------------------------
-  // AUTO-IMPORT loop: tries periodically until success (fallback)
-  // -------------------------
-  function startAutoImportLoop() {
-    if (autoImportIntervalRef.current) return;
+  // ---- Core actions: add/modify/delete handlers ----
 
-    let tries = 0;
-    const maxTries = 20; // ~8 seconds with 400ms interval
-    const intervalMs = 400;
-
-    console.info(
-      "AUTO-IMPORT: Starting fallback loop (interval:",
-      intervalMs,
-      "ms)"
-    );
-    // @ts-ignore
-    autoImportIntervalRef.current = window.setInterval(async () => {
-      tries++;
-      const inst = instanceRef.current;
-      if (!inst) {
-        console.debug("AUTO-IMPORT: no instance yet");
-        if (tries >= maxTries) {
-          stopAutoImportLoop();
-        }
-        return;
-      }
-
-      const Core = inst.Core;
-      const documentViewer = Core?.getDocumentViewer?.() ?? Core.documentViewer;
-      // wait for at least one page to be available (viewer wiring)
-      const pageCount =
-        safeTry(
-          () =>
-            documentViewer.getPageCount?.() ?? documentViewer.getPageCount?.()
-        ) ?? 0;
-      const annotationManager =
-        Core.getAnnotationManager?.() ?? Core.annotationManager;
-
-      console.debug("AUTO-IMPORT: try", tries, {
-        pageCount,
-        annotationManagerExists: !!annotationManager,
-      });
-
-      if (annotationManager && pageCount && pageCount > 0) {
-        // attempt load & import now
-        try {
-          stopAutoImportLoop();
-          console.info(
-            "AUTO-IMPORT: preconditions met (annotationManager + pages). Calling setupAfterLoad fallback import."
-          );
-          await setupAfterLoad(inst);
-          setIsReady(true);
-        } catch (e) {
-          console.warn("AUTO-IMPORT: setupAfterLoad fallback failed:", e);
-        }
-      } else if (tries >= maxTries) {
-        console.warn("AUTO-IMPORT: maxTries reached; stopping fallback loop.");
-        stopAutoImportLoop();
-      }
-    }, intervalMs);
-  }
-
-  function stopAutoImportLoop() {
-    if (autoImportIntervalRef.current) {
-      window.clearInterval(autoImportIntervalRef.current);
-      autoImportIntervalRef.current = null;
-    }
-  }
-
-  // -------------------------
-  // setupAfterLoad: attach listeners + fetch/import XFDF
-  // -------------------------
-  const setupAfterLoad = async (instance: any) => {
-    if (!instance)
-      throw new Error("WebViewer instance missing in setupAfterLoad");
-    const { Core } = instance;
-
-    // init zoom
+  // Called when an annotation is created in the viewer
+  const handleAnnotationAdd = async (
+    annotation: any,
+    annotationManager: any
+  ) => {
     try {
-      const { documentViewer } = Core;
-      setTimeout(() => {
-        try {
-          const zoom = Math.round(documentViewer.getZoom() * 100);
-          setZoomLevel(Number.isFinite(zoom) ? zoom : 100);
-        } catch {}
-      }, 50);
-    } catch (e) {
-      console.warn("Could not hook documentViewer events (non-fatal)", e);
-    }
-
-    // attach annotationChanged handler
-    try {
-      const annotationManager =
-        Core.getAnnotationManager?.() ?? Core.annotationManager;
-      if (!annotationManager) {
-        console.warn("setupAfterLoad: annotation manager not available");
-      } else {
-        // add listener once (guarded)
-        try {
-          annotationManager.addEventListener(
-            "annotationChanged",
-            (annotations: any[], action: string) => {
-              try {
-                console.info("annotationChanged:", {
-                  action,
-                  count: Array.isArray(annotations) ? annotations.length : 0,
-                });
-
-                // schedule per-annotation ops
-                setTimeout(() => {
-                  for (const ann of annotations ?? []) {
-                    try {
-                      if (action === "add") void saveAnnotationToDatabase(ann);
-                      else if (action === "delete")
-                        void deleteAnnotationFromDatabase(ann.Id);
-                      else if (action === "modify")
-                        void updateAnnotationInDatabase(ann);
-                    } catch (e) {
-                      console.error("per-annotation inner error:", e);
-                    }
-                  }
-                }, 0);
-
-                // export full XFDF and debounce save
-                try {
-                  const maybeXfdf = annotationManager.exportAnnotations?.();
-                  Promise.resolve(maybeXfdf)
-                    .then((xfdfString: string) => {
-                      if (!xfdfString) return;
-                      if (saveTimeoutRef.current)
-                        window.clearTimeout(saveTimeoutRef.current);
-                      saveTimeoutRef.current = window.setTimeout(() => {
-                        void debugSaveXfdfNow();
-                        saveTimeoutRef.current = null;
-                      }, 700);
-                    })
-                    .catch((err: any) => {
-                      console.warn("exportAnnotations promise rejected:", err);
-                    });
-                } catch (e) {
-                  console.warn(
-                    "Failed to export XFDF in annotationChanged:",
-                    e
-                  );
-                }
-              } catch (err) {
-                console.error("annotationChanged handler error:", err);
-              }
-            }
-          );
-        } catch (e) {
-          console.warn(
-            "Could not attach annotationChanged listener (non-fatal)",
-            e
-          );
-        }
-      }
-    } catch (e) {
-      console.warn(
-        "Failed to attach annotationChanged listener (non-fatal)",
-        e
-      );
-    }
-
-    // import existingAnnotations (legacy)
-    try {
-      if (existingAnnotations && existingAnnotations.length) {
-        try {
-          importAndApplyAnnotations(instance, existingAnnotations);
-        } catch (e) {
-          console.error("importAndApplyAnnotations failed:", e);
-        }
-      }
-    } catch (e) {
-      console.warn("Loading existingAnnotations failed (non-fatal)", e);
-    }
-
-    // MAIN: fetch XFDF from server and import robustly
-    try {
-      const annotationManager =
-        Core.getAnnotationManager?.() ?? Core.annotationManager;
-      if (!annotationManager) {
-        console.warn("setupAfterLoad: no annotationManager for import step");
-        instanceRef.current = instance;
-        return;
-      }
-
-      const xfdf = await loadXfdfFromServer(documentId);
-      console.info("Loaded XFDF from server, length:", xfdf?.length ?? 0);
-
-      if (xfdf && xfdf.length > 5) {
-        console.group("XFDF DEBUG");
-        console.log("head:", xfdf.slice(0, 300));
-        console.log("tail:", xfdf.slice(Math.max(0, xfdf.length - 300)));
-        console.groupEnd();
-
-        const ok = await importXfdfWithRetries(annotationManager, xfdf, 6, 300);
-        if (!ok) {
-          console.warn(
-            "XFDF import retries failed — XFDF may be malformed or missing <annots>"
-          );
-        } else {
-          console.info("XFDF import succeeded during setupAfterLoad.");
-        }
-      } else {
-        console.info("No XFDF returned from server.");
-      }
-    } catch (e) {
-      console.error("Failed to fetch/import XFDF from server (non-fatal)", e);
-    }
-
-    instanceRef.current = instance;
-  };
-
-  // -------------------------
-  // import helper with transforms + retries
-  // -------------------------
-  async function importXfdfWithRetries(
-    annotationManager: any,
-    rawXfdf: string,
-    attempts = 6,
-    delayMs = 300
-  ) {
-    if (!annotationManager || !rawXfdf) return false;
-
-    const transforms: { name: string; fn: (s: string) => string }[] = [
-      { name: "raw", fn: (s) => s },
-      {
-        name: "htmlUnescape",
-        fn: (s) =>
-          s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"),
-      },
-      {
-        name: "stripBackslashes",
-        fn: (s) =>
-          s.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\'/g, "'"),
-      },
-      {
-        name: "decodedURIComponent",
-        fn: (s) => {
-          try {
-            return decodeURIComponent(s);
-          } catch {
-            return s;
-          }
-        },
-      },
-    ];
-
-    for (let round = 0; round < attempts; round++) {
-      for (const t of transforms) {
-        const payload = t.fn(rawXfdf);
-        try {
-          console.info(
-            `[XFDF IMPORT] round=${round} transform=${t.name} payloadLen=${
-              payload?.length ?? 0
-            }`
-          );
-          annotationManager.importAnnotations?.(payload);
-          annotationManager.redrawAnnotations?.();
-          await wait(Math.max(120, delayMs));
-          const list = safeTry(
-            () => annotationManager.getAnnotationsList?.() ?? []
-          );
-          const count = Array.isArray(list)
-            ? list.length
-            : typeof list === "number"
-            ? list
-            : 0;
-          console.info(
-            `[XFDF IMPORT] transform=${t.name} annotationCount=${count}`
-          );
-          if (count > 0) {
-            console.info("[XFDF IMPORT] success with transform:", t.name);
-            return true;
-          }
-        } catch (e) {
-          console.warn("[XFDF IMPORT] transform failed:", t.name, e);
-        }
-      }
-      await wait(delayMs);
-    }
-    console.warn("[XFDF IMPORT] all attempts exhausted, import not successful");
-    return false;
-  }
-
-  // -------------------------
-  // XFDF server helpers (credentials included)
-  // -------------------------
-  async function saveXfdfToServer(
-    documentIdLocal: string,
-    xfdfString: string | null
-  ) {
-    if (!documentIdLocal || !xfdfString) {
-      console.warn("saveXfdfToServer called with empty payload", {
-        documentIdLocal,
-        xfdfLength: xfdfString?.length ?? 0,
-      });
-      return false;
-    }
-    try {
-      setSavingNow(true);
-      console.info("Saving XFDF to server (length):", xfdfString.length);
-      const res = await fetch("/api/annotations/xfdf", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId: documentIdLocal, xfdf: xfdfString }),
-      });
-      const text = await res.text();
-      console.info("saveXfdfToServer response:", res.status, text);
-      setSavingNow(false);
-      return res.ok;
-    } catch (err) {
-      setSavingNow(false);
-      console.error("saveXfdfToServer error:", err);
-      return false;
-    }
-  }
-
-  async function loadXfdfFromServer(
-    documentIdLocal: string
-  ): Promise<string | null> {
-    if (!documentIdLocal) return null;
-    try {
-      const res = await fetch(
-        `/api/annotations/xfdf?documentId=${encodeURIComponent(
-          documentIdLocal
-        )}`,
-        {
-          method: "GET",
-          credentials: "same-origin",
-        }
-      );
-      if (!res.ok) {
-        console.warn("loadXfdfFromServer non-ok status:", res.status);
-        return null;
-      }
-      const body = await res.json().catch(() => null);
-      return body?.xfdf ?? null;
-    } catch (err) {
-      console.error("loadXfdfFromServer error:", err);
-      return null;
-    }
-  }
-
-  // Debug manual save
-  async function debugSaveXfdfNow() {
-    const inst = instanceRef.current;
-    if (!inst) {
-      console.warn("debugSaveXfdfNow: no instance");
-      return;
-    }
-    const annotationManager =
-      inst.Core.getAnnotationManager?.() ?? inst.Core.annotationManager;
-    if (!annotationManager) {
-      console.warn("debugSaveXfdfNow: no annotationManager");
-      return;
-    }
-
-    try {
-      const maybe = annotationManager.exportAnnotations?.();
-      const xfdf = await Promise.resolve(maybe);
-      console.info("debugSaveXfdfNow - xfdf length:", xfdf?.length ?? 0);
-      await saveXfdfToServer(documentId, xfdf);
-    } catch (e) {
-      console.error("debugSaveXfdfNow error:", e);
-    }
-  }
-
-  // -------------------------
-  // per-annotation CRUD (kept)
-  // -------------------------
-  const saveAnnotationToDatabase = async (annotation: any) => {
-    try {
+      // Build minimal content payload for server
       const payload = {
-        id: annotation.Id,
         document_id: documentId,
-        user_id: currentUserId,
         page_number: annotation.PageNumber,
         annotation_type: getAnnotationType(annotation),
         content: serializeAnnotationContent(annotation),
-        position_x: annotation.X ?? 0,
-        position_y: annotation.Y ?? 0,
-        sequence_number: Date.now(),
+        position_x: annotation.X || 0,
+        position_y: annotation.Y || 0,
+        user_id: currentUserId,
+        user_name: currentUserName,
       };
 
+      // POST to server, server assigns sequence_number and created_at, returns saved annotation
       const res = await fetch("/api/annotations", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        const { annotation: saved } = await res.json();
-        onAnnotationSave?.(saved);
-      } else {
-        console.warn(
-          "saveAnnotationToDatabase server returned non-OK:",
-          res.status
-        );
+      if (!res.ok) {
+        console.warn("Server rejected annotation POST:", res.status);
+        return;
+      }
+
+      const json = await res.json();
+      const saved: Annotation = json?.annotation ?? null;
+      if (!saved) {
+        console.warn("No annotation returned from server");
+        return;
+      }
+
+      // Update the runtime annotation instance so it has the server id and visible metadata
+      try {
+        // set Author
+        annotation.Author = saved.user_name ?? currentUserName;
+        // ensure Id matches server record
+        annotation.Id = saved.id;
+        // prepend metadata header to contents (so exported PDF shows it too)
+        const originalText =
+          (annotation.getContents && annotation.getContents()) ||
+          (saved.content?.text ?? "");
+        const metaHeader = `${saved.sequence_number}. ${
+          saved.user_name ?? currentUserName
+        }\n${formatDateHuman(saved.created_at)}\n\n`;
+        if (annotation.setContents)
+          annotation.setContents(metaHeader + originalText);
+        // set Subject to sequence for readability
+        if (annotation.Subject === undefined)
+          annotation.Subject = `#${saved.sequence_number}`;
+      } catch (e) {
+        console.warn("Failed to modify runtime annotation object:", e);
+      }
+
+      // notify parent
+      onAnnotationSave(saved);
+
+      // Persist full XFDF to server so viewer import is possible on reload
+      try {
+        await persistXfdf(annotationManager);
+      } catch (e) {
+        console.warn("persistXfdf failed after add:", e);
       }
     } catch (e) {
-      console.error("saveAnnotationToDatabase failed:", e);
+      console.error("handleAnnotationAdd error:", e);
     }
   };
 
-  const deleteAnnotationFromDatabase = async (annotationId: string) => {
+  // Called when an annotation is modified
+  const handleAnnotationModify = async (
+    annotation: any,
+    annotationManager: any
+  ) => {
     try {
-      const res = await fetch(`/api/annotations/${annotationId}`, {
-        method: "DELETE",
-        credentials: "same-origin",
-      });
-      if (res.ok) {
-        onAnnotationDelete?.(annotationId);
-      } else {
-        console.warn("deleteAnnotationFromDatabase non-OK:", res.status);
+      const id = annotation.Id;
+      if (!id) {
+        console.warn("modify: annotation has no Id (not saved on server yet)");
+        return;
       }
-    } catch (e) {
-      console.error("deleteAnnotationFromDatabase failed:", e);
-    }
-  };
 
-  const updateAnnotationInDatabase = async (annotation: any) => {
-    try {
       const payload = {
         content: serializeAnnotationContent(annotation),
-        position_x: annotation.X ?? 0,
-        position_y: annotation.Y ?? 0,
+        position_x: annotation.X || 0,
+        position_y: annotation.Y || 0,
       };
-      const res = await fetch(`/api/annotations/${annotation.Id}`, {
-        method: "PUT",
-        credentials: "same-origin",
+
+      const res = await fetch(`/api/annotations/${id}`, {
+        method: "PATCH", // use PATCH to avoid 405 if server doesn't accept PUT
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        const { annotation: updated } = await res.json();
-        onAnnotationSave?.(updated);
-      } else {
-        console.warn("updateAnnotationInDatabase non-OK:", res.status);
+
+      if (!res.ok) {
+        console.warn("Failed to PATCH annotation:", res.status);
+        return;
+      }
+
+      const { annotation: updated } = await res.json();
+      if (updated) onAnnotationSave(updated);
+
+      // persist XFDF after modification too
+      try {
+        await persistXfdf(annotationManager);
+      } catch (e) {
+        console.warn("persistXfdf failed after modify:", e);
       }
     } catch (e) {
-      console.error("updateAnnotationInDatabase failed:", e);
+      console.error("handleAnnotationModify error:", e);
     }
   };
 
-  // -------------------------
-  // import existingAnnotations helper (kept)
-  // -------------------------
-  const importAndApplyAnnotations = (
-    instance: any,
-    annotations: Annotation[]
-  ) => {
-    if (!instance) return;
-    const { Core, Annotations } = instance;
-    const annotationManager =
-      Core.getAnnotationManager?.() ?? Core.annotationManager;
+  // Called when annotation(s) are deleted in the viewer
+  const handleAnnotationDelete = async (annotation: any) => {
+    try {
+      const id = annotation.Id;
+      if (!id) {
+        // nothing to tell server
+        return;
+      }
+
+      const res = await fetch(`/api/annotations/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        console.warn("Failed to DELETE annotation:", res.status);
+      } else {
+        onAnnotationDelete(id);
+      }
+
+      // refresh XFDF (best-effort)
+      try {
+        const inst = instanceRef.current;
+        const annotationManager = resolveAnnotationManager(
+          inst?.Core,
+          resolveDocumentViewer(inst?.Core)
+        );
+        await persistXfdf(annotationManager);
+      } catch (e) {
+        console.warn("persistXfdf failed after delete:", e);
+      }
+    } catch (e) {
+      console.error("handleAnnotationDelete error:", e);
+    }
+  };
+
+  // Persist current XFDF to server (so exported annotations survive refresh)
+  const persistXfdf = async (annotationManager: any) => {
+    if (!annotationManager || !documentId) return;
+    try {
+      if (typeof annotationManager.exportAnnotations !== "function") return;
+      const xfdf = await annotationManager.exportAnnotations();
+      await fetch("/api/annotations/xfdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId, xfdf }),
+      });
+    } catch (e) {
+      console.warn("persistXfdf error:", e);
+    }
+  };
+
+  // Load existing annotations passed in from parent (or fetched from server by parent)
+  const loadExistingAnnotations = async () => {
+    const inst = instanceRef.current;
+    if (!inst) return;
+    const { Core, Annotations } = inst;
+    const docViewer = resolveDocumentViewer(Core);
+    const annotationManager = resolveAnnotationManager(Core, docViewer);
     if (!annotationManager) return;
 
-    for (const a of annotations) {
+    // clear existing viewer annotations first (best-effort)
+    try {
+      const list = annotationManager.getAnnotationsList?.() || [];
+      if (list.length) annotationManager.deleteAnnotations?.(list);
+    } catch (e) {}
+
+    // If parent did not give annotations, fetch from server ourselves (fallback)
+    let annList =
+      existingAnnotations && existingAnnotations.length
+        ? existingAnnotations
+        : null;
+    if ((!annList || annList.length === 0) && documentId) {
+      try {
+        const res = await fetch(
+          `/api/annotations?documentId=${encodeURIComponent(documentId)}`
+        );
+        if (res.ok) {
+          const json = await res.json();
+          annList = json?.annotations || [];
+        }
+      } catch (e) {
+        console.warn("Failed to fetch annotations fallback:", e);
+      }
+    }
+
+    if (!annList || !annList.length) {
+      try {
+        annotationManager.redrawAnnotations?.();
+      } catch {}
+      return;
+    }
+
+    // Add them to the viewer
+    for (const a of annList) {
       try {
         let pdfAnnotation: any = null;
-
         if (a.annotation_type === "sticky_note") {
           pdfAnnotation = new Annotations.StickyAnnotation({
             PageNumber: a.page_number,
             X: a.position_x,
             Y: a.position_y,
           });
-          pdfAnnotation.setContents?.(a.content?.text ?? "");
+          // Put metadata header so it's visible & exported
+          const meta = `${a.sequence_number}. ${
+            a.user_name || "Unknown"
+          }\n${formatDateHuman(a.created_at)}\n\n`;
+          pdfAnnotation.setContents(meta + (a.content?.text ?? ""));
         } else if (a.annotation_type === "highlight") {
           pdfAnnotation = new Annotations.TextHighlightAnnotation({
             PageNumber: a.page_number,
-            Quads: a.content?.quads ?? [],
+            Quads: a.content?.quads,
           });
-          if (a.content?.color) {
-            pdfAnnotation.setColor?.(
-              new Annotations.Color(
-                a.content.color.r || 255,
-                a.content.color.g || 224,
-                a.content.color.b || 102
-              )
-            );
-          }
+          const col = a.content?.color || { r: 255, g: 224, b: 102 };
+          pdfAnnotation.setColor(new Annotations.Color(col.r, col.g, col.b));
+          pdfAnnotation.setContents(
+            `${a.sequence_number}. ${
+              a.user_name || "Unknown"
+            }\n${formatDateHuman(a.created_at)}`
+          );
         } else if (a.annotation_type === "drawing") {
           pdfAnnotation = new Annotations.FreeHandAnnotation({
             PageNumber: a.page_number,
-            Path: a.content?.path ?? [],
-            StrokeColor: a.content?.strokeColor ?? null,
+            Path: a.content?.path,
+            StrokeColor: a.content?.strokeColor,
           });
+          pdfAnnotation.setContents(
+            `${a.sequence_number}. ${
+              a.user_name || "Unknown"
+            }\n${formatDateHuman(a.created_at)}`
+          );
         }
 
         if (pdfAnnotation) {
-          pdfAnnotation.Author = a.user_name ?? "Unknown";
+          pdfAnnotation.Author = a.user_name || "Unknown";
           pdfAnnotation.Id = a.id;
-          annotationManager.addAnnotation(pdfAnnotation);
+          pdfAnnotation.Subject = `#${a.sequence_number}`;
+          annotationManager.addAnnotation?.(pdfAnnotation);
         }
       } catch (e) {
-        console.warn("Failed to convert/import an annotation (skipping):", e);
+        console.warn("Failed to add saved annotation to viewer:", e);
       }
     }
 
     try {
       annotationManager.redrawAnnotations?.();
-    } catch (e) {}
+    } catch {}
   };
 
-  // -------------------------
-  // UI handlers for tool/color/zoom/export (kept)
-  // -------------------------
-  const handleToolSelect = (tool: string) => {
-    try {
-      const inst = instanceRef.current;
-      if (!inst) return;
-
-      const Core = inst.Core;
-      const UI = inst.UI;
-      const Tools = Core?.Tools;
-      const TN = Tools?.ToolNames ?? null;
-
-      const FALLBACK = {
-        select: "AnnotationEdit",
-        highlight: "TextHighlightTool",
-        sticky_note: "AnnotationCreateSticky",
-        drawing: "AnnotationCreateFreeHand",
-      } as const;
-
-      let toolName: string;
-      if (TN) {
-        switch (tool) {
-          case "select":
-            toolName = TN.EDIT ?? FALLBACK.select;
-            break;
-          case "highlight":
-            toolName = TN.TEXT_HIGHLIGHT ?? FALLBACK.highlight;
-            break;
-          case "sticky_note":
-            toolName = TN.STICKY ?? FALLBACK.sticky_note;
-            break;
-          case "drawing":
-            toolName = TN.FREEHAND ?? FALLBACK.drawing;
-            break;
-          default:
-            toolName = TN.EDIT ?? FALLBACK.select;
-        }
-      } else {
-        toolName = FALLBACK[tool as keyof typeof FALLBACK] ?? FALLBACK.select;
-      }
-
-      if (UI && typeof UI.setToolMode === "function") {
-        UI.setToolMode(toolName);
-      } else {
-        const docViewer = Core.getDocumentViewer?.() ?? Core.documentViewer;
-        docViewer.setToolMode(toolName);
-      }
-
-      setSelectedTool(tool);
-    } catch (err) {
-      console.error("handleToolSelect error:", err);
-    }
-  };
-
-  const handleColorChange = (hex: string) => {
-    setSelectedColor(hex);
-    if (!instanceRef.current) return;
-
-    try {
-      const Core = instanceRef.current.Core;
-      const docViewer = Core.getDocumentViewer?.() ?? Core.documentViewer;
-      const Tools = Core?.Tools;
-      const TN = Tools?.ToolNames ?? null;
-
-      const cur = docViewer.getToolMode?.() ?? null;
-      const TEXT_HIGHLIGHT_NAME = TN?.TEXT_HIGHLIGHT ?? "TextHighlightTool";
-      const FREEHAND_NAME = TN?.FREEHAND ?? "AnnotationCreateFreeHand";
-
-      if (cur === TEXT_HIGHLIGHT_NAME) {
-        const highlightTool = docViewer.getTool?.(TEXT_HIGHLIGHT_NAME);
-        highlightTool?.setStyles?.({
-          StrokeColor: new instanceRef.current.Core.Annotations.Color(
-            ...hexToRgb(hex)
-          ),
-          FillColor: new instanceRef.current.Core.Annotations.Color(
-            ...hexToRgb(hex)
-          ),
-        });
-      } else if (cur === FREEHAND_NAME) {
-        const drawingTool = docViewer.getTool?.(FREEHAND_NAME);
-        drawingTool?.setStyles?.({
-          StrokeColor: new instanceRef.current.Core.Annotations.Color(
-            ...hexToRgb(hex)
-          ),
-        });
-      }
-    } catch (e) {
-      console.warn("handleColorChange non-fatal error:", e);
-    }
-  };
-
-  const handleZoom = (direction: "in" | "out" | "fit") => {
-    if (!instanceRef.current) return;
-    try {
-      const docViewer =
-        instanceRef.current.Core.getDocumentViewer?.() ??
-        instanceRef.current.Core.documentViewer;
-      if (direction === "in") docViewer.zoomIn?.();
-      else if (direction === "out") docViewer.zoomOut?.();
-      else if (direction === "fit") docViewer.fitToPage?.();
-
-      setTimeout(() => {
-        try {
-          const z = Math.round(docViewer.getZoom() * 100);
-          setZoomLevel(Number.isFinite(z) ? z : zoomLevel);
-        } catch (e) {}
-      }, 120);
-    } catch (e) {
-      console.error("handleZoom error:", e);
-    }
-  };
-
-  const handleExport = async () => {
-    if (!instanceRef.current) return;
-    try {
-      const { Core } = instanceRef.current;
-      const documentViewer = Core.getDocumentViewer?.() ?? Core.documentViewer;
-      const annotationManager =
-        Core.getAnnotationManager?.() ?? Core.annotationManager;
-      const doc = documentViewer.getDocument();
-      const maybeXfdf = annotationManager.exportAnnotations?.();
-      const xfdfString = await Promise.resolve(maybeXfdf);
-      const data = await doc.getFileData?.({ xfdfString, flatten: true });
-      const blob = new Blob([data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `annotated-${documentId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("Export failed:", e);
-    }
-  };
-
-  // helpers (getAnnotationType, serializeAnnotationContent, hexToRgb)
+  // Helpers: getType & serialize (works for common annotation classes)
   const getAnnotationType = (annotation: any) => {
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) return "sticky_note";
+    const Core = inst.Core;
     try {
-      const Anns = instanceRef.current?.Core?.Annotations;
-      if (!Anns) return "sticky_note";
-      if (annotation instanceof Anns.StickyAnnotation) return "sticky_note";
-      if (annotation instanceof Anns.TextHighlightAnnotation)
+      if (annotation instanceof Core.Annotations.StickyAnnotation)
+        return "sticky_note";
+      if (annotation instanceof Core.Annotations.TextHighlightAnnotation)
         return "highlight";
-      if (annotation instanceof Anns.FreeHandAnnotation) return "drawing";
-    } catch (e) {}
+      if (annotation instanceof Core.Annotations.FreeHandAnnotation)
+        return "drawing";
+    } catch {}
+    // fallback by props
+    if (annotation?.Subject?.toLowerCase().includes("highlight"))
+      return "highlight";
     return "sticky_note";
   };
 
   const serializeAnnotationContent = (annotation: any) => {
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) return {};
+    const Core = inst.Core;
     try {
-      const Anns = instanceRef.current?.Core?.Annotations;
-      if (!Anns) return {};
-      if (annotation instanceof Anns.StickyAnnotation) {
-        return { text: annotation.getContents?.() ?? "" };
+      if (annotation instanceof Core.Annotations.StickyAnnotation) {
+        return { text: annotation.getContents?.() || "" };
       }
-      if (annotation instanceof Anns.TextHighlightAnnotation) {
-        const color = annotation.getColor?.();
+      if (annotation instanceof Core.Annotations.TextHighlightAnnotation) {
+        const color = annotation.getColor?.() || { r: 255, g: 224, b: 102 };
         return {
-          quads: annotation.getQuads?.() ?? [],
-          color: color ? { r: color.r, g: color.g, b: color.b } : null,
+          quads: annotation.getQuads?.(),
+          color: { r: color.r, g: color.g, b: color.b },
         };
       }
-      if (annotation instanceof Anns.FreeHandAnnotation) {
+      if (annotation instanceof Core.Annotations.FreeHandAnnotation) {
         return {
-          path: annotation.getPath?.() ?? [],
-          strokeColor: annotation.getStrokeColor?.() ?? null,
+          path: annotation.getPath?.(),
+          strokeColor: annotation.getStrokeColor?.(),
         };
       }
-    } catch (e) {}
+    } catch {}
     return {};
   };
 
+  // Tool handlers and UI control functions (same functionality but defensive)
+  const handleToolSelect = (toolName: string) => {
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) return;
+    const Core = inst.Core;
+    const documentViewer = resolveDocumentViewer(Core);
+    if (!documentViewer) {
+      console.warn("Document viewer not ready");
+      return;
+    }
+
+    setSelectedTool(toolName);
+
+    try {
+      switch (toolName) {
+        case "select":
+          documentViewer.setToolMode?.(Core.Tools.ToolNames.EDIT);
+          break;
+        case "highlight":
+          documentViewer.setToolMode?.(Core.Tools.ToolNames.TEXT_HIGHLIGHT);
+          {
+            const tool = documentViewer.getTool?.(
+              Core.Tools.ToolNames.TEXT_HIGHLIGHT
+            );
+            if (tool) {
+              tool.setStyles?.({
+                StrokeColor: new Core.Annotations.Color(
+                  ...hexToRgb(selectedColor)
+                ),
+                FillColor: new Core.Annotations.Color(
+                  ...hexToRgb(selectedColor)
+                ),
+              });
+            }
+          }
+          break;
+        case "sticky_note":
+          documentViewer.setToolMode?.(Core.Tools.ToolNames.STICKY);
+          break;
+        case "drawing":
+          documentViewer.setToolMode?.(Core.Tools.ToolNames.FREEHAND);
+          {
+            const tool = documentViewer.getTool?.(
+              Core.Tools.ToolNames.FREEHAND
+            );
+            if (tool) {
+              tool.setStyles?.({
+                StrokeColor: new Core.Annotations.Color(
+                  ...hexToRgb(selectedColor)
+                ),
+                StrokeThickness: 2,
+              });
+            }
+          }
+          break;
+      }
+    } catch (e) {
+      console.warn("handleToolSelect error", e);
+    }
+  };
+
+  const handleColorChange = (color: string) => {
+    setSelectedColor(color);
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) return;
+    const Core = inst.Core;
+    const dv = resolveDocumentViewer(Core);
+    if (!dv) return;
+    const currentTool = dv.getToolMode?.();
+    if (currentTool === Core.Tools.ToolNames.TEXT_HIGHLIGHT) {
+      const t = dv.getTool?.(Core.Tools.ToolNames.TEXT_HIGHLIGHT);
+      t?.setStyles?.({
+        StrokeColor: new Core.Annotations.Color(...hexToRgb(color)),
+        FillColor: new Core.Annotations.Color(...hexToRgb(color)),
+      });
+    } else if (currentTool === Core.Tools.ToolNames.FREEHAND) {
+      const t = dv.getTool?.(Core.Tools.ToolNames.FREEHAND);
+      t?.setStyles?.({
+        StrokeColor: new Core.Annotations.Color(...hexToRgb(color)),
+      });
+    }
+  };
+
+  const handleZoom = (direction: "in" | "out" | "fit") => {
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) return;
+    const Core = inst.Core;
+    const dv = resolveDocumentViewer(Core);
+    if (!dv) return;
+    if (direction === "in") dv.zoomIn?.();
+    else if (direction === "out") dv.zoomOut?.();
+    else if (direction === "fit") dv.fitToPage?.();
+    setTimeout(() => {
+      try {
+        setZoomLevel(Math.round((dv.getZoom?.() || 1) * 100));
+      } catch {}
+    }, 120);
+  };
+
+  const handleExport = async () => {
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) return;
+    try {
+      const Core = inst.Core;
+      const dv = resolveDocumentViewer(Core);
+      const am = resolveAnnotationManager(Core, dv);
+      if (!dv || !am) return console.error("viewer/export not ready");
+      const doc = dv.getDocument?.();
+      const xfdfString = await am.exportAnnotations();
+      const data = await doc.getFileData({ xfdfString, flatten: true });
+      const blob = new Blob([data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `annotated-document-${documentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      // Persist XFDF to server after export so the flattened PDF & the server store match
+      await persistXfdf(am);
+    } catch (e) {
+      console.error("handleExport error", e);
+    }
+  };
+
+  // Small util
   const hexToRgb = (hex: string): [number, number, number] => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result
-      ? [
-          parseInt(result[1], 16),
-          parseInt(result[2], 16),
-          parseInt(result[3], 16),
-        ]
+    const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return r
+      ? [parseInt(r[1], 16), parseInt(r[2], 16), parseInt(r[3], 16)]
       : [255, 224, 102];
   };
 
-  // UI
+  // render
   return (
-    <div className="w-full h-full flex flex-col relative">
+    <div className="w-full h-full flex flex-col">
       <CustomToolbar
         selectedTool={selectedTool}
         selectedColor={selectedColor}
@@ -857,43 +704,9 @@ export default function WebViewerComponent({
         onColorChange={handleColorChange}
         onZoom={handleZoom}
         onExport={handleExport}
+        viewerReady={viewerReady}
       />
-
-      {/* Debug save button */}
-      <div style={{ position: "absolute", right: 12, top: 68, zIndex: 60 }}>
-        <button
-          onClick={() => void debugSaveXfdfNow()}
-          className="px-2 py-1 rounded bg-primary text-white text-xs shadow"
-          disabled={savingNow}
-        >
-          {savingNow ? "Saving..." : "Save annotations now"}
-        </button>
-      </div>
-
-      {/* viewer container */}
-      <div
-        ref={viewerRef}
-        className="flex-1 w-full"
-        style={{ minHeight: 300 }}
-      />
-
-      {/* overlay if not ready */}
-      {!isReady && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-white bg-opacity-60 p-4 rounded shadow">
-            {initError ? (
-              <div>
-                <p className="text-sm text-red-700 font-medium">
-                  Viewer initialization error
-                </p>
-                <pre className="text-xs text-gray-700 mt-2">{initError}</pre>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-700">Setting up PDF viewer...</p>
-            )}
-          </div>
-        </div>
-      )}
+      <div ref={viewer as any} className="flex-1 w-full" />
     </div>
   );
 }
