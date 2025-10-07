@@ -287,3 +287,21 @@ function toMySQLDatetime(d: Date): string {
   const secs = pad(d.getSeconds());
   return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
 }
+
+
+// helper: check document lock owner
+async function isDocumentLockOwnedBy(userId: string | null, documentId: string) {
+  if (!documentId) return false;
+  const sql = `SELECT locked_by, locked_at FROM documents WHERE id = ? LIMIT 1`;
+  const res: any = await DatabaseService.query(sql, [documentId]);
+  const rows = normalizeRows(res);
+  if (!rows || rows.length === 0) return false;
+  const row = rows[0];
+  const lockedBy = row.locked_by;
+  const lockedAt = row.locked_at ? new Date(row.locked_at) : null;
+
+  if (!lockedBy) return false;
+  // expired?
+  if (lockedAt && (Date.now() - lockedAt.getTime()) > 3 * 60 * 1000) return false;
+  return String(lockedBy) === String(userId);
+}

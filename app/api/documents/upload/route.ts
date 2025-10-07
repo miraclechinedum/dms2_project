@@ -3,8 +3,24 @@ import { DatabaseService } from "@/lib/database";
 import { AuthService } from "@/lib/auth";
 import * as fs from "fs";
 import * as path from "path";
+import { randomUUID } from "crypto";
 
 export async function POST(request: NextRequest) {
+  // Helper: safe logger for DB errors
+  const logDbError = (label: string, err: any) => {
+    console.error(label);
+    try {
+      console.error(err);
+      if (err?.stack) console.error(err.stack);
+      if (err?.sql) console.error("SQL:", err.sql);
+      if (err?.message) console.error("Message:", err.message);
+    } catch (e) {
+      console.error("Failed to log dbErr details:", e);
+    }
+  };
+
+  let filePath: string | null = null;
+
   try {
     console.log("=== LOCAL FILE UPLOAD STARTED ===");
 
@@ -27,12 +43,12 @@ export async function POST(request: NextRequest) {
 
     // Parse form data
     const formData = await request.formData();
-    const file = formData.get("file") as File;
-    const title = formData.get("title") as string;
-    const description = formData.get("description") as string;
-    const assignmentType = formData.get("assignmentType") as string;
-    const assignedUsers = formData.getAll("assignedUsers") as string[];
-    const assignedDepartments = formData.getAll("assignedDepartments") as string[];
+    const file = formData.get("file") as File | null;
+    const title = (formData.get("title") as string) ?? "";
+    const description = (formData.get("description") as string) ?? "";
+    const assignmentType = (formData.get("assignmentType") as string) ?? "";
+    const assignedUsers = formData.getAll("assignedUsers") as string[]; // may be []
+    const assignedDepartments = formData.getAll("assignedDepartments") as string[]; // may be []
 
     if (!file || !title) {
       return NextResponse.json(
@@ -60,9 +76,11 @@ export async function POST(request: NextRequest) {
 
     // Generate a unique file name
     const timestamp = Date.now();
-    const safeFileName = file.name.replace(/\s+/g, "_"); // replace spaces
+    const safeFileName = file.name
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9._-]/g, "");
     const fileName = `${timestamp}-${safeFileName}`;
-    const filePath = path.join(uploadDir, fileName);
+    filePath = path.join(uploadDir, fileName);
 
     // Write file to local disk
     fs.writeFileSync(filePath, buffer);
@@ -71,51 +89,156 @@ export async function POST(request: NextRequest) {
     const fileUrl = `/uploads/documents/${fileName}`;
 
     // Generate document ID
-    const documentId = `doc_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
+    const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Determine assignment
-    const assignedToUser =
-      assignmentType === "user" && assignedUsers.length > 0
-        ? assignedUsers[0]
-        : null;
-    const assignedToDepartment =
+    // Determine assignment target
+    let assignedToUser =
+      assignmentType === "user" && assignedUsers.length > 0 ? assignedUsers[0] : null;
+    let assignedToDepartment =
       assignmentType === "department" && assignedDepartments.length > 0
         ? assignedDepartments[0]
         : null;
 
-    // Insert into database
-    const sql = `
-      INSERT INTO documents (id, title, file_path, file_size, mime_type, uploaded_by, assigned_to_user, assigned_to_department, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
-    `;
+    // NOTE: Optional validation of assigned user/department existence (useful if FK constraints exist).
+    // If you want validation, uncomment and adapt the code below. I left it commented-out as line comments
+    // to avoid block comment issues during compilation.
+    //
+    // Example:
+    // if (assignedToUser) {
+    //   const userCheck = await DatabaseService.query("SELECT 1 FROM users WHERE id = ? LIMIT 1", [assignedToUser]);
+    //   const userRows = Array.isArray(userCheck) && userCheck[0] ? userCheck[0] : userCheck;
+    //   if (!userRows || userRows.length === 0) {
+    //     assignedToUser = null;
+    //   }
+    // }
+    //
+    // if (assignedToDepartment) {
+    //   const deptCheck = await DatabaseService.query("SELECT 1 FROM departments WHERE id = ? LIMIT 1", [assignedToDepartment]);
+    //   const deptRows = Array.isArray(deptCheck) && deptCheck[0] ? deptCheck[0] : deptCheck;
+    //   if (!deptRows || deptRows.length === 0) {
+    //     assignedToDepartment = null;
+    //   }
+    // }
 
-    const insertParams = [
+    // Prepare SQL for documents insert (adjust columns if your schema differs)
+    const docSql = `
+      INSERT INTO documents
+      (id, title, file_path, file_size, mime_type, uploaded_by, assigned_to_user, assigned_to_department, status, created_at, updated_at, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?)
+    `;
+    const docParams = [
       documentId,
       title,
-      fileUrl, // Local file URL
+      fileUrl,
       buffer.length,
       file.type,
       userId,
       assignedToUser,
       assignedToDepartment,
+      description,
     ];
 
-    await DatabaseService.query(sql, insertParams);
+    // Insert document row (no explicit transaction)
+    try {
+      await DatabaseService.query(docSql, docParams);
+      console.log("✅ Document row inserted:", documentId);
+    } catch (docErr) {
+      // Document insert failed — remove uploaded file and return error
+      logDbError("Document INSERT failed:", docErr);
+      // cleanup file
+      try {
+        if (filePath && fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log("🗑️ Removed uploaded file after document insert failure:", filePath);
+        }
+      } catch (unlinkErr) {
+        console.error("Failed to remove file after document insert failure:", unlinkErr);
+      }
+      return NextResponse.json(
+        { error: "Failed to insert document", detail: String(docErr?.message ?? docErr) },
+        { status: 500 }
+      );
+    }
 
-    console.log("✅ Document saved locally:", fileUrl);
+    // Prepare assignment insert SQL
+    const assignmentId = randomUUID();
+    const assignmentSql = `
+      INSERT INTO document_assignments
+        (id, document_id, assigned_to, assigned_by, department_id, roles, status, notified_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+    `;
+    const assignmentParams = [
+      assignmentId,
+      documentId,
+      assignedToUser,
+      userId,
+      assignedToDepartment,
+      "Author",
+      "active",
+    ];
 
-    return NextResponse.json(
-      {
-        message: "Document uploaded successfully",
-        documentId,
-        fileUrl,
-      },
-      { status: 201 }
-    );
+    // Insert assignment row
+    try {
+      await DatabaseService.query(assignmentSql, assignmentParams);
+      console.log("✅ Assignment row inserted:", assignmentId);
+
+      // Success response: return assignment metadata
+      return NextResponse.json(
+        {
+          message: "Document uploaded successfully",
+          documentId,
+          fileUrl,
+          assignment: {
+            id: assignmentId,
+            document_id: documentId,
+            assigned_to: assignedToUser,
+            department_id: assignedToDepartment,
+            assigned_by: userId,
+            roles: "Author",
+            status: "active",
+          },
+        },
+        { status: 201 }
+      );
+    } catch (assignErr) {
+      // Assignment insert failed — log full error, delete the document row and file to avoid orphans
+      logDbError("Assignment INSERT failed:", assignErr);
+
+      // attempt to delete the previously inserted document row
+      try {
+        await DatabaseService.query("DELETE FROM documents WHERE id = ?", [documentId]);
+        console.log("🗑️ Deleted document row after assignment insert failure:", documentId);
+      } catch (delErr) {
+        logDbError("Failed to delete document row after assignment failure:", delErr);
+      }
+
+      // remove the uploaded file
+      try {
+        if (filePath && fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log("🗑️ Removed uploaded file after assignment failure:", filePath);
+        }
+      } catch (unlinkErr) {
+        logDbError("Failed to remove file after assignment insert failure:", unlinkErr);
+      }
+
+      return NextResponse.json(
+        { error: "Failed to create document assignment", detail: String(assignErr?.message ?? assignErr) },
+        { status: 500 }
+      );
+    }
   } catch (error: any) {
-    console.error("💥 Upload error:", error);
+    console.error("💥 Upload error (outer):", error);
+    if (filePath) {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log("🗑️ Removed uploaded file after outer error:", filePath);
+        }
+      } catch (e) {
+        console.error("Failed to remove file in outer error:", e);
+      }
+    }
     return NextResponse.json(
       { error: error?.message ?? "Failed to upload document" },
       { status: 500 }
