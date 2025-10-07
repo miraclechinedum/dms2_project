@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import WebViewer from "@pdftron/webviewer";
-import { CustomToolbar } from "./CustomToolbar";
 
 /* ------------------------------- Types ------------------------------- */
 interface Annotation {
@@ -52,11 +51,8 @@ export default function WebViewerComponent({
   const viewer = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<any>(null);
   const annotationChangeHandlerRef = useRef<any>(null);
-  const [selectedTool, setSelectedTool] = useState<string>("select");
-  const [selectedColor, setSelectedColor] = useState<string>("#FFE066");
-  const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [viewerReady, setViewerReady] = useState(false);
-  const [readOnlyApplied, setReadOnlyApplied] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   // NEW: local state for lastAssignedUserId (seeded from prop)
   const [lastAssignedUserIdState, setLastAssignedUserIdState] = useState<
@@ -156,37 +152,69 @@ export default function WebViewerComponent({
     return text;
   };
 
-  // --- helper to inject/remove our readonly CSS (avoids "stuck" CSS) ---
+  // --- IMPROVED: helper to inject/remove our readonly CSS ---
   const injectReadOnlyCss = () => {
     const id = "wv-readonly-css";
     if (document.getElementById(id)) return;
     const s = document.createElement("style");
     s.id = id;
     s.innerHTML = `
-      /* hide common header/panels when readOnly so built-in toolbar doesn't appear */
-      .HeaderItems, .ToolsHeader, .Header, .MenuOverlay, .LeftPanel, .NotesPanel {
-        display: none !important;
+      /* hide ALL toolbar elements when readOnly */
+      .Header, .ToolsHeader, .ribbons, .MenuOverlay, .LeftPanel, .NotesPanel {
+        display: none;
+      }
+      /* Ensure the document area takes full height when toolbar is hidden */
+      .DocumentContainer {
+        height: 100vh !important;
       }
     `;
     document.head.appendChild(s);
   };
+
   const removeReadOnlyCss = () => {
     const id = "wv-readonly-css";
     const el = document.getElementById(id);
     if (el) el.remove();
-    const els = document.querySelectorAll<HTMLElement>(
-      ".Header, .LeftPanel, .NotesPanel"
-    );
-    els.forEach((e) => {
-      e.style.display = "";
-      e.style.visibility = "";
-    });
+
+    // CRITICAL FIX: Force show elements immediately
+    const forceShow = () => {
+      const selectors = [
+        ".Header",
+        ".ToolsHeader",
+        ".ribbons",
+        ".LeftPanel",
+        ".NotesPanel",
+      ];
+      selectors.forEach((sel) => {
+        const els = document.querySelectorAll<HTMLElement>(sel);
+        els.forEach((e) => {
+          e.style.removeProperty("display");
+          e.style.display = "";
+          e.style.visibility = "visible";
+        });
+      });
+
+      // Specifically force ribbons to show (most important for annotation toolbar)
+      const ribbons = document.querySelectorAll<HTMLElement>(".ribbons");
+      ribbons.forEach((r) => {
+        r.style.removeProperty("display");
+        r.style.display = "flex"; // Use flex as WebViewer typically uses flexbox
+        r.style.visibility = "visible";
+        r.style.opacity = "1";
+      });
+    };
+
+    // Run immediately
+    forceShow();
+
+    // Run again after short delay to catch any late-rendered elements
+    setTimeout(forceShow, 100);
+    setTimeout(forceShow, 300);
   };
 
-  // ---------- NEW: Clear leftover loading overlays --------------
+  // ---------- IMPROVED: Clear leftover loading overlays --------------
   const clearLoadingOverlays = () => {
     try {
-      // selectors that commonly represent modals/overlays/spinners in various builds
       const selectors = [
         ".Modal",
         ".modal",
@@ -205,7 +233,6 @@ export default function WebViewerComponent({
         ".overlay-screen",
       ];
 
-      // First try to remove overlays that are children of the viewer element (safe + scoped)
       const root = viewer.current;
       if (root) {
         for (const sel of selectors) {
@@ -217,7 +244,6 @@ export default function WebViewerComponent({
           });
         }
 
-        // Some builds append the overlay to the viewer's parent container:
         const parent = root.parentElement;
         if (parent) {
           for (const sel of selectors) {
@@ -231,11 +257,9 @@ export default function WebViewerComponent({
         }
       }
 
-      // If nothing found by scope, remove globally (useful during dev when elements are appended to body)
       for (const sel of selectors) {
         const nodes = document.querySelectorAll(sel);
         nodes.forEach((n) => {
-          // small safety: only remove nodes that are likely part of our viewer
           try {
             const shouldRemove =
               !viewer.current ||
@@ -254,7 +278,6 @@ export default function WebViewerComponent({
         });
       }
 
-      // Ensure viewer children are visible (in case inline style was left hidden)
       if (viewer.current) {
         const children = viewer.current.querySelectorAll<HTMLElement>("*");
         children.forEach((c) => {
@@ -269,7 +292,6 @@ export default function WebViewerComponent({
       }
     } catch (e) {
       // non-fatal
-      // console.warn("clearLoadingOverlays error:", e);
     }
   };
 
@@ -325,13 +347,12 @@ export default function WebViewerComponent({
     loadAssigned();
   }, [documentId, lastAssignedUserIdProp]);
 
-  // --- init WebViewer (use effectiveReadOnly to avoid flash/persistence) ---
+  // --- IMPROVED: init WebViewer with better toolbar handling ---
   useEffect(() => {
-    if (!viewer.current) return;
+    if (!viewer.current || initialized) return;
 
     console.info("WebViewer init - documentUrl:", documentUrl);
 
-    // debug output — helps confirm props & flags
     console.info("WebViewer debug:", {
       currentUserId,
       lastAssignedUserIdProp,
@@ -342,7 +363,8 @@ export default function WebViewerComponent({
     });
 
     let instance: any = null;
-    const disableList = [
+
+    const readOnlyDisableList = [
       "leftPanel",
       "notesPanel",
       "searchButton",
@@ -357,7 +379,11 @@ export default function WebViewerComponent({
       "toolbarGroup-View",
       "toolbarGroup-Share",
       "annotationPopup",
+      "stylePopup",
+      "richTextPopup",
     ];
+
+    const editableDisableList: string[] = [];
 
     if (effectiveReadOnly) injectReadOnlyCss();
 
@@ -367,7 +393,13 @@ export default function WebViewerComponent({
         initialDoc: documentUrl,
         licenseKey:
           "demo:1757509875851:604eca4e0300000000877d781419f71633c68ea80c20ad3325f5806b42",
-        disabledElements: effectiveReadOnly ? disableList : [],
+        disabledElements: effectiveReadOnly
+          ? readOnlyDisableList
+          : editableDisableList,
+        enableAnnotationTools: !effectiveReadOnly,
+        enableFilePicker: false,
+        enableMeasurement: !effectiveReadOnly,
+        enableRedaction: !effectiveReadOnly,
       },
       viewer.current
     )
@@ -376,22 +408,68 @@ export default function WebViewerComponent({
         instanceRef.current = instance;
         const { UI, Core } = instance;
 
-        try {
-          if (effectiveReadOnly) {
-            UI.disableElements?.(disableList);
-            UI.setHeaderItems?.(() => {});
-          } else {
-            UI.enableElements?.([
+        // IMPROVED: Better toolbar enablement for assigned users
+        if (!effectiveReadOnly) {
+          try {
+            removeReadOnlyCss();
+
+            const allElements = [
               "header",
+              "toolsHeader",
+              "ribbons",
               "toolbarGroup-Annotate",
               "toolbarGroup-Edit",
               "toolbarGroup-Insert",
               "toolbarGroup-View",
               "toolbarGroup-Share",
-            ]);
+              "toolbarGroup-Forms",
+              "toolbarGroup-FillAndSign",
+              "toolbarGroup-Measure",
+              "leftPanel",
+              "notesPanel",
+              "searchButton",
+              "menuButton",
+              "toggleNotesButton",
+              "annotationPopup",
+              "stylePopup",
+            ];
+
+            UI.enableElements(allElements);
+
+            // CRITICAL FIX: Use openElements to force visibility
+            if (typeof UI.openElements === "function") {
+              UI.openElements(["ribbons", "toolsHeader"]);
+            }
+
+            UI.setToolbarGroup("toolbarGroup-Annotate");
+
+            const dv = resolveDocumentViewer(Core);
+            const am = resolveAnnotationManager(Core, dv);
+            if (am) {
+              if (typeof am.enableReadOnlyMode === "function") {
+                am.enableReadOnlyMode(false);
+              } else if (typeof am.setReadOnly === "function") {
+                am.setReadOnly(false);
+              }
+            }
+
+            UI.setReadOnlyMode(false);
+
+            // CRITICAL FIX: Force ribbons to show with DOM manipulation
+            setTimeout(() => {
+              const ribbons =
+                document.querySelectorAll<HTMLElement>(".ribbons");
+              ribbons.forEach((r) => {
+                r.style.display = "flex";
+                r.style.visibility = "visible";
+                r.style.opacity = "1";
+              });
+            }, 300);
+
+            console.log("✅ Full annotation toolbar enabled for assigned user");
+          } catch (e) {
+            console.error("Failed to enable full toolbar:", e);
           }
-        } catch (e) {
-          console.warn("UI.post-init toggle failed (nonfatal):", e);
         }
 
         const documentViewer = resolveDocumentViewer(Core);
@@ -430,54 +508,81 @@ export default function WebViewerComponent({
                 } else if (UI && typeof UI.setReadOnlyMode === "function") {
                   UI.setReadOnlyMode(true);
                 }
-                setReadOnlyApplied(true);
                 addToast("Document opened in read-only mode", 2200);
               } catch (e) {
                 console.warn("Failed to apply readOnly on load:", e);
               }
             } else {
               try {
-                UI.setToolbarGroup?.("toolbarGroup-Annotate");
-                UI.enableElements?.([
-                  "toolbarGroup-Annotate",
-                  "toolbarGroup-Edit",
-                  "toggleNotesButton",
-                  "notesPanel",
-                  "leftPanel",
-                ]);
-              } catch (e) {}
-            }
+                if (!effectiveReadOnly) {
+                  removeReadOnlyCss();
+                  UI.setReadOnlyMode(false);
 
-            // If we are the assignee but something still hides the toolbar, force it
-            if (isAssignedUser && UI) {
-              try {
-                removeReadOnlyCss();
-                const dv2 = resolveDocumentViewer(Core);
-                const am2 = resolveAnnotationManager(Core, dv2);
-                if (am2 && typeof am2.enableReadOnlyMode === "function")
-                  am2.enableReadOnlyMode(false);
-                else if (am2 && typeof am2.setReadOnly === "function")
-                  am2.setReadOnly(false);
+                  const allElements = [
+                    "header",
+                    "toolsHeader",
+                    "ribbons",
+                    "toolbarGroup-Annotate",
+                    "toolbarGroup-Edit",
+                    "toolbarGroup-Insert",
+                    "toolbarGroup-View",
+                    "toolbarGroup-Share",
+                    "toggleNotesButton",
+                    "notesPanel",
+                    "leftPanel",
+                    "annotationPopup",
+                  ];
 
-                UI.setReadOnlyMode?.(false);
-                UI.enableElements?.([
-                  "header",
-                  "toolbarGroup-Annotate",
-                  "toolbarGroup-Edit",
-                  "toggleNotesButton",
-                  "notesPanel",
-                  "leftPanel",
-                ]);
-                try {
-                  UI.setToolbarGroup?.("toolbarGroup-Annotate");
-                } catch {}
-                addToast("Annotations enabled for assignee", 1200);
+                  UI.enableElements(allElements);
+
+                  // CRITICAL FIX: Use openElements API
+                  if (typeof UI.openElements === "function") {
+                    UI.openElements(["ribbons", "toolsHeader", "header"]);
+                  }
+
+                  UI.setToolbarGroup("toolbarGroup-Annotate");
+
+                  // IMPROVED: Better tool mode setting
+                  if (dv && dv.setToolMode && Core?.Tools?.ToolNames) {
+                    setTimeout(() => {
+                      try {
+                        dv.setToolMode(Core.Tools.ToolNames.EDIT);
+                      } catch (e) {
+                        console.warn("Failed to set tool mode:", e);
+                      }
+                    }, 200);
+                  }
+
+                  // CRITICAL FIX: Multiple attempts to show ribbons
+                  const forceShowRibbons = () => {
+                    const ribbons =
+                      document.querySelectorAll<HTMLElement>(".ribbons");
+                    ribbons.forEach((r) => {
+                      r.style.display = "flex";
+                      r.style.visibility = "visible";
+                      r.style.opacity = "1";
+                    });
+
+                    const toolsHeader =
+                      document.querySelectorAll<HTMLElement>(".ToolsHeader");
+                    toolsHeader.forEach((t) => {
+                      t.style.display = "block";
+                      t.style.visibility = "visible";
+                    });
+                  };
+
+                  forceShowRibbons();
+                  setTimeout(forceShowRibbons, 100);
+                  setTimeout(forceShowRibbons, 300);
+                  setTimeout(forceShowRibbons, 500);
+
+                  addToast("Full annotation tools enabled", 1200);
+                }
               } catch (e) {
-                console.warn("force-enable toolbar for assignee failed:", e);
+                console.warn("Failed to enable annotation tools:", e);
               }
             }
 
-            // remove any leftover overlay elements (fixes "document under loader" issue)
             clearLoadingOverlays();
 
             // import XFDF
@@ -597,11 +702,10 @@ export default function WebViewerComponent({
               registerHandlers({ highlightAnnotation });
             }
 
-            // finally load annotations
             await loadExistingAnnotations();
 
             setViewerReady(true);
-            // After viewerReady, also clear overlays again to be safe
+            setInitialized(true);
             window.setTimeout(() => clearLoadingOverlays(), 250);
             console.log("✅ WebViewer documentLoaded");
           } catch (err) {
@@ -617,7 +721,6 @@ export default function WebViewerComponent({
         console.error("WebViewer init failed:", err);
       });
 
-    // cleanup
     return () => {
       try {
         if (instance) {
@@ -645,16 +748,15 @@ export default function WebViewerComponent({
         instanceRef.current = null;
         annotationChangeHandlerRef.current = null;
         setViewerReady(false);
+        setInitialized(false);
       }
     };
-    // re-init when doc/url or effective read-only changes (prevents toolbar flash)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentUrl, documentId, effectiveReadOnly, lastAssignedUserIdState]);
+  }, [documentUrl, documentId]);
 
-  // react to effectiveReadOnly toggles at runtime
+  // IMPROVED: react to effectiveReadOnly toggles at runtime
   useEffect(() => {
     const inst = instanceRef.current;
-    if (!inst) return;
+    if (!inst || !initialized) return;
     const { UI, Core } = inst;
 
     const applyReadOnlyUI = async (enable: boolean) => {
@@ -673,14 +775,17 @@ export default function WebViewerComponent({
         if (enable) {
           UI.setReadOnlyMode?.(true);
           UI.disableElements?.([
+            "toolsHeader",
+            "ribbons",
             "toolbarGroup-Annotate",
             "toolbarGroup-Edit",
+            "toolbarGroup-Insert",
+            "toolbarGroup-View",
+            "toolbarGroup-Share",
             "annotationPopup",
             "toggleNotesButton",
             "notesPanel",
             "leftPanel",
-            "toolsHeader",
-            "ribbons",
           ]);
           injectReadOnlyCss();
           addToast("Document switched to read-only", 2000);
@@ -688,61 +793,78 @@ export default function WebViewerComponent({
           UI.setReadOnlyMode?.(false);
           removeReadOnlyCss();
 
-          UI.enableElements?.([
+          const allElements = [
+            "header",
+            "toolsHeader",
+            "ribbons",
             "toolbarGroup-Annotate",
             "toolbarGroup-Edit",
             "toolbarGroup-Insert",
             "toolbarGroup-View",
+            "toolbarGroup-Share",
+            "toolbarGroup-Forms",
+            "toolbarGroup-FillAndSign",
+            "toolbarGroup-Measure",
             "annotationPopup",
             "toggleNotesButton",
             "notesPanel",
             "leftPanel",
-            "toolsHeader",
-            "ribbons",
-            "header",
-          ]);
+          ];
+
+          UI.enableElements?.(allElements);
+
+          // CRITICAL FIX: Use openElements API
+          if (typeof UI.openElements === "function") {
+            UI.openElements(["ribbons", "toolsHeader", "header"]);
+          }
 
           try {
             UI.setToolbarGroup?.("toolbarGroup-Annotate");
+
+            if (dv && dv.setToolMode && Core?.Tools?.ToolNames) {
+              setTimeout(() => {
+                try {
+                  dv.setToolMode(Core.Tools.ToolNames.EDIT);
+                } catch (e) {
+                  console.warn("Failed to set tool mode:", e);
+                }
+              }, 200);
+            }
           } catch {}
 
-          // ensure any leftover overlay is removed when switching to editable
+          // CRITICAL FIX: Force ribbons visible multiple times
+          const forceShowRibbons = () => {
+            const ribbons = document.querySelectorAll<HTMLElement>(".ribbons");
+            ribbons.forEach((r) => {
+              r.style.removeProperty("display");
+              r.style.display = "flex";
+              r.style.visibility = "visible";
+              r.style.opacity = "1";
+            });
+          };
+
+          forceShowRibbons();
+          setTimeout(forceShowRibbons, 100);
+          setTimeout(forceShowRibbons, 300);
+          setTimeout(forceShowRibbons, 500);
+
           clearLoadingOverlays();
 
-          addToast("Annotations enabled", 1400);
+          addToast("Full annotation tools enabled", 1400);
         }
-        setReadOnlyApplied(enable);
       } catch (e) {
         console.warn("applyReadOnlyUI error:", e);
       }
     };
 
     applyReadOnlyUI(Boolean(effectiveReadOnly));
-  }, [effectiveReadOnly]);
+  }, [effectiveReadOnly, initialized]);
 
-  // when parent-provided annotations change, reload them
   useEffect(() => {
     if (!viewerReady) return;
     loadExistingAnnotations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewerReady, JSON.stringify(existingAnnotations || [])]);
 
-  // auto-activate toolbar/tool when viewer ready AND effectiveReadOnly is false
-  useEffect(() => {
-    if (!viewerReady) return;
-    if (effectiveReadOnly) return;
-    const t = setTimeout(() => {
-      try {
-        handleToolSelect("select");
-      } catch (e) {
-        console.warn("auto-activate tool failed:", e);
-      }
-    }, 200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewerReady, effectiveReadOnly]);
-
-  // load / render annotations into viewer
   const loadExistingAnnotations = async () => {
     const inst = instanceRef.current;
     if (!inst) return;
@@ -842,7 +964,6 @@ export default function WebViewerComponent({
     } catch {}
   };
 
-  // ---------- Annotation lifecycle handlers ----------
   const handleAnnotationAdd = async (
     annotation: any,
     annotationManager: any
@@ -852,7 +973,6 @@ export default function WebViewerComponent({
       return;
     }
     try {
-      // optimistic UI – provisional id & header
       try {
         const provisionalId =
           annotation.Id ||
@@ -1111,7 +1231,6 @@ export default function WebViewerComponent({
     }
   };
 
-  // persist XFDF
   const persistXfdf = async (annotationManager: any) => {
     if (!annotationManager || !documentId) return;
     try {
@@ -1127,7 +1246,6 @@ export default function WebViewerComponent({
     }
   };
 
-  // detect type / serialize
   const getAnnotationType = (annotation: any) => {
     const inst = instanceRef.current;
     if (!inst || !inst.Core) return "sticky_note";
@@ -1171,154 +1289,8 @@ export default function WebViewerComponent({
     return {};
   };
 
-  // toolbar handlers
-  const handleToolSelect = (toolName: string) => {
-    if (effectiveReadOnly) {
-      addToast("Document is read-only — annotation tools disabled", 2500);
-      return;
-    }
-    const inst = instanceRef.current;
-    if (!inst || !inst.Core) return;
-    const Core = inst.Core;
-    const dv = resolveDocumentViewer(Core);
-    if (!dv) return;
-
-    setSelectedTool(toolName);
-
-    try {
-      switch (toolName) {
-        case "select":
-          dv.setToolMode?.(Core.Tools.ToolNames.EDIT);
-          break;
-        case "highlight":
-          dv.setToolMode?.(Core.Tools.ToolNames.TEXT_HIGHLIGHT);
-          {
-            const tool = dv.getTool?.(Core.Tools.ToolNames.TEXT_HIGHLIGHT);
-            if (tool) {
-              tool.setStyles?.({
-                StrokeColor: new Core.Annotations.Color(
-                  ...hexToRgb(selectedColor)
-                ),
-                FillColor: new Core.Annotations.Color(
-                  ...hexToRgb(selectedColor)
-                ),
-              });
-            }
-          }
-          break;
-        case "sticky_note":
-          dv.setToolMode?.(Core.Tools.ToolNames.STICKY);
-          break;
-        case "drawing":
-          dv.setToolMode?.(Core.Tools.ToolNames.FREEHAND);
-          {
-            const tool = dv.getTool?.(Core.Tools.ToolNames.FREEHAND);
-            if (tool)
-              tool.setStyles?.({
-                StrokeColor: new Core.Annotations.Color(
-                  ...hexToRgb(selectedColor)
-                ),
-                StrokeThickness: 2,
-              });
-          }
-          break;
-      }
-    } catch (e) {
-      console.warn("handleToolSelect error", e);
-    }
-  };
-
-  const handleColorChange = (color: string) => {
-    if (effectiveReadOnly) {
-      addToast("Document is read-only — color change disabled", 2000);
-      return;
-    }
-    setSelectedColor(color);
-    const inst = instanceRef.current;
-    if (!inst || !inst.Core) return;
-    const Core = inst.Core;
-    const dv = resolveDocumentViewer(Core);
-    if (!dv) return;
-    const currentTool = dv.getToolMode?.();
-    if (currentTool === Core.Tools.ToolNames.TEXT_HIGHLIGHT) {
-      const t = dv.getTool?.(Core.Tools.ToolNames.TEXT_HIGHLIGHT);
-      t?.setStyles?.({
-        StrokeColor: new Core.Annotations.Color(...hexToRgb(color)),
-        FillColor: new Core.Annotations.Color(...hexToRgb(color)),
-      });
-    } else if (currentTool === Core.Tools.ToolNames.FREEHAND) {
-      const t = dv.getTool?.(Core.Tools.ToolNames.FREEHAND);
-      t?.setStyles?.({
-        StrokeColor: new Core.Annotations.Color(...hexToRgb(color)),
-      });
-    }
-  };
-
-  const handleZoom = (direction: "in" | "out" | "fit") => {
-    const inst = instanceRef.current;
-    if (!inst || !inst.Core) return;
-    const Core = inst.Core;
-    const dv = resolveDocumentViewer(Core);
-    if (!dv) return;
-    if (direction === "in") dv.zoomIn?.();
-    else if (direction === "out") dv.zoomOut?.();
-    else if (direction === "fit") dv.fitToPage?.();
-    setTimeout(() => {
-      try {
-        setZoomLevel(Math.round((dv.getZoom?.() || 1) * 100));
-      } catch {}
-    }, 120);
-  };
-
-  const handleExport = async () => {
-    const inst = instanceRef.current;
-    if (!inst || !inst.Core) return;
-    try {
-      const Core = inst.Core;
-      const dv = resolveDocumentViewer(Core);
-      const am = resolveAnnotationManager(Core, dv);
-      if (!dv || !am) return console.error("viewer/export not ready");
-      const doc = dv.getDocument?.();
-      const xfdfString = await am.exportAnnotations();
-      const data = await doc.getFileData({ xfdfString, flatten: true });
-      const blob = new Blob([data], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `annotated-document-${documentId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      await persistXfdf(am);
-    } catch (e) {
-      console.error("handleExport error:", e);
-      addToast("Failed to export document.", 6000);
-    }
-  };
-
-  const hexToRgb = (hex: string): [number, number, number] => {
-    const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return r
-      ? [parseInt(r[1], 16), parseInt(r[2], 16), parseInt(r[3], 16)]
-      : [255, 224, 102];
-  };
-
   return (
     <div className="w-full h-full flex flex-col relative">
-      {isAssignedUser && (
-        <CustomToolbar
-          selectedTool={selectedTool}
-          selectedColor={selectedColor}
-          zoomLevel={zoomLevel}
-          onToolSelect={handleToolSelect}
-          onColorChange={handleColorChange}
-          onZoom={handleZoom}
-          onExport={handleExport}
-          viewerReady={viewerReady}
-          readOnly={effectiveReadOnly}
-        />
-      )}
       <div ref={viewer as any} className="flex-1 w-full" />
       <div style={{ position: "absolute", top: 12, right: 12, zIndex: 9999 }}>
         {toasts.map((t) => (
