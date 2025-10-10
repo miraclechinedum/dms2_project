@@ -231,17 +231,38 @@ export default function DocumentViewerPage() {
   const fetchAssignmentHistory = async () => {
     if (!document) return;
     try {
+      console.log(
+        "📋 [FRONTEND] Fetching assignment history for document:",
+        document.id
+      );
+
       const res = await fetch(
         `/api/document_assignments?documentId=${encodeURIComponent(
           document.id
         )}`
       );
+
+      console.log(
+        "📋 [FRONTEND] Assignment history response status:",
+        res.status
+      );
+
       if (!res.ok) {
         console.error("Failed to fetch assignment history:", res.status);
+        const errorText = await res.text();
+        console.error("Error response:", errorText);
         return;
       }
-      const { assignments } = await res.json();
-      setAssignmentHistory(Array.isArray(assignments) ? assignments : []);
+
+      const data = await res.json();
+      console.log("📋 [FRONTEND] Assignment history RAW data received:", data);
+
+      const assignments = Array.isArray(data.assignments)
+        ? data.assignments
+        : [];
+      console.log("📋 [FRONTEND] Processed assignments:", assignments);
+
+      setAssignmentHistory(assignments);
       setCurrentPage(1);
     } catch (err) {
       console.error("fetchAssignmentHistory error", err);
@@ -680,51 +701,58 @@ export default function DocumentViewerPage() {
 
               <ScrollArea className="flex-1">
                 <div className="p-4 space-y-3">
+                  {console.log("📋 [RENDER] Current pageItems:", pageItems)}
                   {pageItems.length > 0 ? (
-                    pageItems.map((a: Assignment) => (
-                      <Card
-                        key={
-                          a.assignment_id ?? `${a.assigned_at}-${a.assigned_to}`
-                        }
-                        className="p-3 hover:shadow-md transition-shadow border-l-4 border-l-primary"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              variant="outline"
-                              className="text-xs border-primary/20 text-primary"
-                            >
-                              {a.roles ?? "Editor"}
-                            </Badge>
-                            <div className="text-sm font-medium">
-                              {a.assigned_to_name ?? "Unspecified"}
+                    pageItems.map((a: Assignment) => {
+                      console.log("📋 [RENDER] Rendering assignment:", a);
+                      return (
+                        <Card
+                          key={
+                            a.assignment_id ??
+                            `${a.assigned_at}-${a.assigned_to}`
+                          }
+                          className="p-3 hover:shadow-md transition-shadow border-l-4 border-l-primary"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className="text-xs border-primary/20 text-primary"
+                              >
+                                {a.roles ?? "Editor"}
+                              </Badge>
+                              <div className="text-sm font-medium">
+                                {a.assigned_to_name ?? "Unspecified"}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="mb-2 text-xs text-gray-600">
-                          <div>
-                            Assigned by:{" "}
-                            <span className="font-medium">
-                              {a.assigned_by_name ?? a.assigned_by ?? "System"}
-                            </span>
+                          <div className="mb-2 text-xs text-gray-600">
+                            <div>
+                              Assigned by:{" "}
+                              <span className="font-medium">
+                                {a.assigned_by_name ??
+                                  a.assigned_by ??
+                                  "System"}
+                              </span>
+                            </div>
+                            <div>Status: {a.status ?? "—"}</div>
                           </div>
-                          <div>Status: {a.status ?? "—"}</div>
-                        </div>
 
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span>
-                            {formatDateTimeCustom(
-                              a.notified_at ??
-                                a.assigned_at ??
-                                a.updated_at ??
-                                ""
-                            )}
-                          </span>
-                          <span>{a.notified_at ? "Notified" : ""}</span>
-                        </div>
-                      </Card>
-                    ))
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>
+                              {formatDateTimeCustom(
+                                a.notified_at ??
+                                  a.assigned_at ??
+                                  a.updated_at ??
+                                  ""
+                              )}
+                            </span>
+                            <span>{a.notified_at ? "Notified" : ""}</span>
+                          </div>
+                        </Card>
+                      );
+                    })
                   ) : (
                     <div className="text-center py-8">
                       <StickyNote className="h-12 w-12 text-gray-400 mx-auto mb-2" />
@@ -734,6 +762,14 @@ export default function DocumentViewerPage() {
                       <p className="text-xs text-gray-500 mt-1">
                         When assignments occur, they'll appear here.
                       </p>
+                      <Button
+                        onClick={fetchAssignmentHistory}
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                      >
+                        Refresh History
+                      </Button>
                     </div>
                   )}
 
