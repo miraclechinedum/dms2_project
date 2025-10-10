@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import WebViewer from "@pdftron/webviewer";
 
-/* ------------------------------- Types ------------------------------- */
 interface Annotation {
   id: string;
   document_id: string;
   user_id: string;
   page_number: number;
-  annotation_type: "sticky_note" | "drawing" | "highlight" | "drawing";
+  annotation_type: "sticky_note" | "drawing" | "highlight";
   content: any;
   sequence_number: number;
   position_x: number;
@@ -24,14 +23,13 @@ interface WebViewerProps {
   documentId: string;
   currentUserId: string;
   currentUserName: string;
-  lastAssignedUserId?: string; // optional prop — if provided, no fetch needed
+  assignedToUserId?: string;
   onAnnotationSave?: (annotation: Annotation) => void;
   onAnnotationDelete?: (annotationId: string) => void;
   existingAnnotations: Annotation[];
   registerHandlers?: (handlers: {
     highlightAnnotation: (id: string) => Promise<void>;
   }) => void;
-  readOnly?: boolean;
 }
 
 type Toast = { id: string; message: string };
@@ -41,12 +39,11 @@ export default function WebViewerComponent({
   documentId,
   currentUserId,
   currentUserName,
-  lastAssignedUserId: lastAssignedUserIdProp,
+  assignedToUserId,
   onAnnotationSave,
   onAnnotationDelete,
   existingAnnotations,
   registerHandlers,
-  readOnly = false,
 }: WebViewerProps) {
   const viewer = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<any>(null);
@@ -54,18 +51,9 @@ export default function WebViewerComponent({
   const [viewerReady, setViewerReady] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
-  // NEW: local state for lastAssignedUserId (seeded from prop)
-  const [lastAssignedUserIdState, setLastAssignedUserIdState] = useState<
-    string | undefined
-  >(lastAssignedUserIdProp);
-
-  // compute assignment + effective read-only using the *state*
-  const isAssignedUser =
-    typeof lastAssignedUserIdState !== "undefined" &&
-    String(currentUserId) === String(lastAssignedUserIdState);
-
-  // viewer must be read-only when either prop readOnly is true OR current user is not assignee
-  const effectiveReadOnly = Boolean(readOnly) || !isAssignedUser;
+  // Calculate if current user can annotate
+  const canAnnotate =
+    assignedToUserId && String(currentUserId) === String(assignedToUserId);
 
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -77,7 +65,7 @@ export default function WebViewerComponent({
   const removeToast = (id: string) =>
     setToasts((t) => t.filter((x) => x.id !== id));
 
-  // date formatting helper
+  // Date formatting helper
   const formatDateHuman = (iso?: string) => {
     if (!iso) return "";
     try {
@@ -135,7 +123,7 @@ export default function WebViewerComponent({
     return null;
   };
 
-  // strip header text helpers
+  // Strip header text helpers
   const stripMetaFromText = (text: string | undefined) => {
     if (!text || typeof text !== "string") return text ?? "";
     const firstDoubleNewlineIndex = text.indexOf("\n\n");
@@ -152,18 +140,18 @@ export default function WebViewerComponent({
     return text;
   };
 
-  // --- IMPROVED: helper to inject/remove our readonly CSS ---
+  // Read-only CSS injection
   const injectReadOnlyCss = () => {
     const id = "wv-readonly-css";
     if (document.getElementById(id)) return;
     const s = document.createElement("style");
     s.id = id;
     s.innerHTML = `
-      /* hide ALL toolbar elements when readOnly */
+      /* Hide toolbar elements when read-only */
       .Header, .ToolsHeader, .ribbons, .MenuOverlay, .LeftPanel, .NotesPanel {
-        display: none;
+        display: none !important;
       }
-      /* Ensure the document area takes full height when toolbar is hidden */
+      /* Ensure the document area takes full height */
       .DocumentContainer {
         height: 100vh !important;
       }
@@ -175,44 +163,9 @@ export default function WebViewerComponent({
     const id = "wv-readonly-css";
     const el = document.getElementById(id);
     if (el) el.remove();
-
-    // CRITICAL FIX: Force show elements immediately
-    const forceShow = () => {
-      const selectors = [
-        ".Header",
-        ".ToolsHeader",
-        ".ribbons",
-        ".LeftPanel",
-        ".NotesPanel",
-      ];
-      selectors.forEach((sel) => {
-        const els = document.querySelectorAll<HTMLElement>(sel);
-        els.forEach((e) => {
-          e.style.removeProperty("display");
-          e.style.display = "";
-          e.style.visibility = "visible";
-        });
-      });
-
-      // Specifically force ribbons to show (most important for annotation toolbar)
-      const ribbons = document.querySelectorAll<HTMLElement>(".ribbons");
-      ribbons.forEach((r) => {
-        r.style.removeProperty("display");
-        r.style.display = "flex"; // Use flex as WebViewer typically uses flexbox
-        r.style.visibility = "visible";
-        r.style.opacity = "1";
-      });
-    };
-
-    // Run immediately
-    forceShow();
-
-    // Run again after short delay to catch any late-rendered elements
-    setTimeout(forceShow, 100);
-    setTimeout(forceShow, 300);
   };
 
-  // ---------- IMPROVED: Clear leftover loading overlays --------------
+  // Clear leftover loading overlays
   const clearLoadingOverlays = () => {
     try {
       const selectors = [
@@ -243,124 +196,25 @@ export default function WebViewerComponent({
             } catch {}
           });
         }
-
-        const parent = root.parentElement;
-        if (parent) {
-          for (const sel of selectors) {
-            const found = parent.querySelectorAll(sel);
-            found.forEach((n) => {
-              try {
-                (n as HTMLElement).remove();
-              } catch {}
-            });
-          }
-        }
-      }
-
-      for (const sel of selectors) {
-        const nodes = document.querySelectorAll(sel);
-        nodes.forEach((n) => {
-          try {
-            const shouldRemove =
-              !viewer.current ||
-              viewer.current.contains(n) ||
-              (n.parentElement &&
-                (n.parentElement.className || "")
-                  .toString()
-                  .toLowerCase()
-                  .includes("webviewer")) ||
-              (n.className &&
-                n.className.toString().toLowerCase().includes("webviewer")) ||
-              (n.id && n.id.toLowerCase().includes("webviewer")) ||
-              (n.id && n.id.toLowerCase().includes("overlay"));
-            if (shouldRemove) (n as HTMLElement).remove();
-          } catch {}
-        });
-      }
-
-      if (viewer.current) {
-        const children = viewer.current.querySelectorAll<HTMLElement>("*");
-        children.forEach((c) => {
-          if (
-            c.style &&
-            (c.style.display === "none" || c.style.visibility === "hidden")
-          ) {
-            c.style.display = "";
-            c.style.visibility = "";
-          }
-        });
       }
     } catch (e) {
       // non-fatal
     }
   };
 
-  // --------------------------
-  // NEW: fetch document metadata if we don't have lastAssignedUserIdProp
-  // --------------------------
-  useEffect(() => {
-    if (lastAssignedUserIdProp) {
-      console.info(
-        "Using lastAssignedUserId from prop:",
-        lastAssignedUserIdProp
-      );
-      return;
-    }
-    const loadAssigned = async () => {
-      if (!documentId) return;
-      try {
-        const res = await fetch(
-          `/api/documents/${encodeURIComponent(documentId)}`
-        );
-        if (!res.ok) {
-          console.warn("Document metadata fetch failed:", res.status);
-          return;
-        }
-        const json = await res.json().catch(() => null);
-        console.info("Document metadata fetch result:", json);
-
-        const candidate =
-          json?.lastAssignedUserId ||
-          json?.last_assigned_user_id ||
-          json?.lastAssignedToUserId ||
-          json?.lastAssignedTo ||
-          json?.assigned_to ||
-          json?.lastAssignedUser ||
-          json?.document?.lastAssignedUserId ||
-          json?.document?.last_assigned_user_id ||
-          json?.document?.assigned_to ||
-          undefined;
-
-        if (candidate) {
-          setLastAssignedUserIdState(String(candidate));
-          console.info("Discovered lastAssignedUserId:", candidate);
-        } else {
-          console.info(
-            "No lastAssignedUserId discovered from document metadata."
-          );
-        }
-      } catch (e) {
-        console.warn("Failed to fetch document metadata:", e);
-      }
-    };
-
-    loadAssigned();
-  }, [documentId, lastAssignedUserIdProp]);
-
-  // --- IMPROVED: init WebViewer with better toolbar handling ---
+  // Initialize WebViewer with permission control
   useEffect(() => {
     if (!viewer.current || initialized) return;
 
     console.info("WebViewer init - documentUrl:", documentUrl);
-
-    console.info("WebViewer debug:", {
-      currentUserId,
-      lastAssignedUserIdProp,
-      lastAssignedUserIdState,
-      isAssignedUser,
-      readOnlyProp: readOnly,
-      effectiveReadOnly,
-    });
+    console.info(
+      "Permission check - canAnnotate:",
+      canAnnotate,
+      "assignedToUserId:",
+      assignedToUserId,
+      "currentUserId:",
+      currentUserId
+    );
 
     let instance: any = null;
 
@@ -385,7 +239,7 @@ export default function WebViewerComponent({
 
     const editableDisableList: string[] = [];
 
-    if (effectiveReadOnly) injectReadOnlyCss();
+    if (!canAnnotate) injectReadOnlyCss();
 
     WebViewer(
       {
@@ -393,13 +247,13 @@ export default function WebViewerComponent({
         initialDoc: documentUrl,
         licenseKey:
           "demo:1757509875851:604eca4e0300000000877d781419f71633c68ea80c20ad3325f5806b42",
-        disabledElements: effectiveReadOnly
+        disabledElements: !canAnnotate
           ? readOnlyDisableList
           : editableDisableList,
-        enableAnnotationTools: !effectiveReadOnly,
+        enableAnnotationTools: canAnnotate,
         enableFilePicker: false,
-        enableMeasurement: !effectiveReadOnly,
-        enableRedaction: !effectiveReadOnly,
+        enableMeasurement: canAnnotate,
+        enableRedaction: canAnnotate,
       },
       viewer.current
     )
@@ -408,11 +262,10 @@ export default function WebViewerComponent({
         instanceRef.current = instance;
         const { UI, Core } = instance;
 
-        // IMPROVED: Better toolbar enablement for assigned users
-        if (!effectiveReadOnly) {
+        // Enable/disable toolbar based on permissions
+        if (canAnnotate) {
           try {
             removeReadOnlyCss();
-
             const allElements = [
               "header",
               "toolsHeader",
@@ -436,7 +289,6 @@ export default function WebViewerComponent({
 
             UI.enableElements(allElements);
 
-            // CRITICAL FIX: Use openElements to force visibility
             if (typeof UI.openElements === "function") {
               UI.openElements(["ribbons", "toolsHeader"]);
             }
@@ -455,7 +307,6 @@ export default function WebViewerComponent({
 
             UI.setReadOnlyMode(false);
 
-            // CRITICAL FIX: Force ribbons to show with DOM manipulation
             setTimeout(() => {
               const ribbons =
                 document.querySelectorAll<HTMLElement>(".ribbons");
@@ -470,6 +321,8 @@ export default function WebViewerComponent({
           } catch (e) {
             console.error("Failed to enable full toolbar:", e);
           }
+        } else {
+          addToast("Read-only mode: You are not the assigned reviewer", 3000);
         }
 
         const documentViewer = resolveDocumentViewer(Core);
@@ -485,17 +338,7 @@ export default function WebViewerComponent({
             const dv = resolveDocumentViewer(Core);
             const annotationManager = resolveAnnotationManager(Core, dv);
 
-            console.info("WebViewer documentLoaded - debug:", {
-              currentUserId,
-              lastAssignedUserIdProp,
-              lastAssignedUserIdState,
-              isAssignedUser,
-              effectiveReadOnly,
-              UI_available: !!UI,
-              annotationManager_available: !!annotationManager,
-            });
-
-            if (effectiveReadOnly && annotationManager) {
+            if (!canAnnotate && annotationManager) {
               try {
                 if (
                   typeof annotationManager.enableReadOnlyMode === "function"
@@ -508,84 +351,14 @@ export default function WebViewerComponent({
                 } else if (UI && typeof UI.setReadOnlyMode === "function") {
                   UI.setReadOnlyMode(true);
                 }
-                addToast("Document opened in read-only mode", 2200);
               } catch (e) {
                 console.warn("Failed to apply readOnly on load:", e);
-              }
-            } else {
-              try {
-                if (!effectiveReadOnly) {
-                  removeReadOnlyCss();
-                  UI.setReadOnlyMode(false);
-
-                  const allElements = [
-                    "header",
-                    "toolsHeader",
-                    "ribbons",
-                    "toolbarGroup-Annotate",
-                    "toolbarGroup-Edit",
-                    "toolbarGroup-Insert",
-                    "toolbarGroup-View",
-                    "toolbarGroup-Share",
-                    "toggleNotesButton",
-                    "notesPanel",
-                    "leftPanel",
-                    "annotationPopup",
-                  ];
-
-                  UI.enableElements(allElements);
-
-                  // CRITICAL FIX: Use openElements API
-                  if (typeof UI.openElements === "function") {
-                    UI.openElements(["ribbons", "toolsHeader", "header"]);
-                  }
-
-                  UI.setToolbarGroup("toolbarGroup-Annotate");
-
-                  // IMPROVED: Better tool mode setting
-                  if (dv && dv.setToolMode && Core?.Tools?.ToolNames) {
-                    setTimeout(() => {
-                      try {
-                        dv.setToolMode(Core.Tools.ToolNames.EDIT);
-                      } catch (e) {
-                        console.warn("Failed to set tool mode:", e);
-                      }
-                    }, 200);
-                  }
-
-                  // CRITICAL FIX: Multiple attempts to show ribbons
-                  const forceShowRibbons = () => {
-                    const ribbons =
-                      document.querySelectorAll<HTMLElement>(".ribbons");
-                    ribbons.forEach((r) => {
-                      r.style.display = "flex";
-                      r.style.visibility = "visible";
-                      r.style.opacity = "1";
-                    });
-
-                    const toolsHeader =
-                      document.querySelectorAll<HTMLElement>(".ToolsHeader");
-                    toolsHeader.forEach((t) => {
-                      t.style.display = "block";
-                      t.style.visibility = "visible";
-                    });
-                  };
-
-                  forceShowRibbons();
-                  setTimeout(forceShowRibbons, 100);
-                  setTimeout(forceShowRibbons, 300);
-                  setTimeout(forceShowRibbons, 500);
-
-                  addToast("Full annotation tools enabled", 1200);
-                }
-              } catch (e) {
-                console.warn("Failed to enable annotation tools:", e);
               }
             }
 
             clearLoadingOverlays();
 
-            // import XFDF
+            // Import XFDF
             try {
               if (annotationManager && documentId) {
                 const xfdfRes = await fetch(
@@ -605,10 +378,6 @@ export default function WebViewerComponent({
                       typeof annotationManager.importXfdf === "function"
                     ) {
                       await annotationManager.importXfdf(xfdf);
-                    } else {
-                      console.warn(
-                        "annotationManager missing importAnnotations/importXfdf"
-                      );
                     }
                     annotationManager.redrawAnnotations?.();
                   }
@@ -618,13 +387,19 @@ export default function WebViewerComponent({
               console.warn("Failed to fetch/import XFDF:", e);
             }
 
-            // annotationChanged listener
+            // Annotation changed listener
             if (
               annotationManager &&
               typeof annotationManager.addEventListener === "function"
             ) {
               const handler = async (annotations: any[], action: string) => {
-                if (effectiveReadOnly) return;
+                if (!canAnnotate) {
+                  addToast(
+                    "You are not the assigned reviewer - annotations disabled",
+                    2500
+                  );
+                  return;
+                }
                 if (!Array.isArray(annotations)) return;
                 if (action === "add") {
                   for (const ann of annotations)
@@ -641,7 +416,7 @@ export default function WebViewerComponent({
               annotationManager.addEventListener("annotationChanged", handler);
             }
 
-            // register highlight helper
+            // Register highlight helper
             const highlightAnnotation = async (annotationId: string) => {
               try {
                 const inst = instanceRef.current;
@@ -751,115 +526,9 @@ export default function WebViewerComponent({
         setInitialized(false);
       }
     };
-  }, [documentUrl, documentId]);
+  }, [documentUrl, documentId, canAnnotate, currentUserId, assignedToUserId]);
 
-  // IMPROVED: react to effectiveReadOnly toggles at runtime
-  useEffect(() => {
-    const inst = instanceRef.current;
-    if (!inst || !initialized) return;
-    const { UI, Core } = inst;
-
-    const applyReadOnlyUI = async (enable: boolean) => {
-      try {
-        const dv = resolveDocumentViewer(Core);
-        const am = resolveAnnotationManager(Core, dv);
-
-        if (am) {
-          if (typeof am.enableReadOnlyMode === "function") {
-            am.enableReadOnlyMode(Boolean(enable));
-          } else if (typeof am.setReadOnly === "function") {
-            am.setReadOnly(Boolean(enable));
-          }
-        }
-
-        if (enable) {
-          UI.setReadOnlyMode?.(true);
-          UI.disableElements?.([
-            "toolsHeader",
-            "ribbons",
-            "toolbarGroup-Annotate",
-            "toolbarGroup-Edit",
-            "toolbarGroup-Insert",
-            "toolbarGroup-View",
-            "toolbarGroup-Share",
-            "annotationPopup",
-            "toggleNotesButton",
-            "notesPanel",
-            "leftPanel",
-          ]);
-          injectReadOnlyCss();
-          addToast("Document switched to read-only", 2000);
-        } else {
-          UI.setReadOnlyMode?.(false);
-          removeReadOnlyCss();
-
-          const allElements = [
-            "header",
-            "toolsHeader",
-            "ribbons",
-            "toolbarGroup-Annotate",
-            "toolbarGroup-Edit",
-            "toolbarGroup-Insert",
-            "toolbarGroup-View",
-            "toolbarGroup-Share",
-            "toolbarGroup-Forms",
-            "toolbarGroup-FillAndSign",
-            "toolbarGroup-Measure",
-            "annotationPopup",
-            "toggleNotesButton",
-            "notesPanel",
-            "leftPanel",
-          ];
-
-          UI.enableElements?.(allElements);
-
-          // CRITICAL FIX: Use openElements API
-          if (typeof UI.openElements === "function") {
-            UI.openElements(["ribbons", "toolsHeader", "header"]);
-          }
-
-          try {
-            UI.setToolbarGroup?.("toolbarGroup-Annotate");
-
-            if (dv && dv.setToolMode && Core?.Tools?.ToolNames) {
-              setTimeout(() => {
-                try {
-                  dv.setToolMode(Core.Tools.ToolNames.EDIT);
-                } catch (e) {
-                  console.warn("Failed to set tool mode:", e);
-                }
-              }, 200);
-            }
-          } catch {}
-
-          // CRITICAL FIX: Force ribbons visible multiple times
-          const forceShowRibbons = () => {
-            const ribbons = document.querySelectorAll<HTMLElement>(".ribbons");
-            ribbons.forEach((r) => {
-              r.style.removeProperty("display");
-              r.style.display = "flex";
-              r.style.visibility = "visible";
-              r.style.opacity = "1";
-            });
-          };
-
-          forceShowRibbons();
-          setTimeout(forceShowRibbons, 100);
-          setTimeout(forceShowRibbons, 300);
-          setTimeout(forceShowRibbons, 500);
-
-          clearLoadingOverlays();
-
-          addToast("Full annotation tools enabled", 1400);
-        }
-      } catch (e) {
-        console.warn("applyReadOnlyUI error:", e);
-      }
-    };
-
-    applyReadOnlyUI(Boolean(effectiveReadOnly));
-  }, [effectiveReadOnly, initialized]);
-
+  // Load annotations when ready
   useEffect(() => {
     if (!viewerReady) return;
     loadExistingAnnotations();
@@ -968,11 +637,15 @@ export default function WebViewerComponent({
     annotation: any,
     annotationManager: any
   ) => {
-    if (effectiveReadOnly) {
-      addToast("Document is read-only — annotations are disabled", 2500);
+    if (!canAnnotate) {
+      addToast(
+        "You are not the assigned reviewer - cannot add annotations",
+        2500
+      );
       return;
     }
     try {
+      // Apply provisional header for optimistic UI
       try {
         const provisionalId =
           annotation.Id ||
@@ -982,7 +655,7 @@ export default function WebViewerComponent({
         const userText =
           (annotation.getContents && annotation.getContents()) || "";
         const nowIso = new Date().toISOString();
-        const provisionalHeader = `... Saving (optimistic) ...\n${currentUserName}\n${formatDateHuman(
+        const provisionalHeader = `... Saving ...\n${currentUserName}\n${formatDateHuman(
           nowIso
         )}\n\n`;
         if (annotation.setContents)
@@ -1080,8 +753,11 @@ export default function WebViewerComponent({
     annotation: any,
     annotationManager: any
   ) => {
-    if (effectiveReadOnly) {
-      addToast("Document is read-only — edits are disabled", 2500);
+    if (!canAnnotate) {
+      addToast(
+        "You are not the assigned reviewer - cannot modify annotations",
+        2500
+      );
       return;
     }
     try {
@@ -1147,8 +823,11 @@ export default function WebViewerComponent({
     annotation: any,
     annotationManager: any
   ) => {
-    if (effectiveReadOnly) {
-      addToast("Document is read-only — delete disabled", 2500);
+    if (!canAnnotate) {
+      addToast(
+        "You are not the assigned reviewer - cannot delete annotations",
+        2500
+      );
       return;
     }
     try {

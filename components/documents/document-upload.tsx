@@ -158,7 +158,7 @@ export function DocumentUpload() {
         <CardHeader>
           <CardTitle>Upload Document</CardTitle>
           <CardDescription>
-            Upload a PDF document and assign it to users or departments
+            Upload a PDF document kkand assign it to users or departments
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

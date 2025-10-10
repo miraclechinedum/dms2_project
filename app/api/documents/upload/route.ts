@@ -48,7 +48,9 @@ export async function POST(request: NextRequest) {
     const description = (formData.get("description") as string) ?? "";
     const assignmentType = (formData.get("assignmentType") as string) ?? "";
     const assignedUsers = formData.getAll("assignedUsers") as string[]; // may be []
-    const assignedDepartments = formData.getAll("assignedDepartments") as string[]; // may be []
+    const assignedDepartments = formData.getAll(
+      "assignedDepartments"
+    ) as string[]; // may be []
 
     if (!file || !title) {
       return NextResponse.json(
@@ -69,7 +71,12 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
 
     // Define local storage path
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "documents");
+    const uploadDir = path.join(
+      process.cwd(),
+      "public",
+      "uploads",
+      "documents"
+    );
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -89,42 +96,24 @@ export async function POST(request: NextRequest) {
     const fileUrl = `/uploads/documents/${fileName}`;
 
     // Generate document ID
-    const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const documentId = `doc_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
 
-    // Determine assignment target
-    let assignedToUser =
-      assignmentType === "user" && assignedUsers.length > 0 ? assignedUsers[0] : null;
-    let assignedToDepartment =
-      assignmentType === "department" && assignedDepartments.length > 0
-        ? assignedDepartments[0]
-        : null;
+    // Determine assignment target - use first selected user or current user as fallback
+    let assignedToUser = userId; // Default to current user
 
-    // NOTE: Optional validation of assigned user/department existence (useful if FK constraints exist).
-    // If you want validation, uncomment and adapt the code below. I left it commented-out as line comments
-    // to avoid block comment issues during compilation.
-    //
-    // Example:
-    // if (assignedToUser) {
-    //   const userCheck = await DatabaseService.query("SELECT 1 FROM users WHERE id = ? LIMIT 1", [assignedToUser]);
-    //   const userRows = Array.isArray(userCheck) && userCheck[0] ? userCheck[0] : userCheck;
-    //   if (!userRows || userRows.length === 0) {
-    //     assignedToUser = null;
-    //   }
-    // }
-    //
-    // if (assignedToDepartment) {
-    //   const deptCheck = await DatabaseService.query("SELECT 1 FROM departments WHERE id = ? LIMIT 1", [assignedToDepartment]);
-    //   const deptRows = Array.isArray(deptCheck) && deptCheck[0] ? deptCheck[0] : deptCheck;
-    //   if (!deptRows || deptRows.length === 0) {
-    //     assignedToDepartment = null;
-    //   }
-    // }
+    if (assignmentType === "user" && assignedUsers.length > 0) {
+      assignedToUser = assignedUsers[0];
+    }
+    // If department assignment, we'll just assign to current user for now
+    // since we removed department assignment functionality
 
-    // Prepare SQL for documents insert (adjust columns if your schema differs)
+    // Prepare SQL for documents insert
     const docSql = `
       INSERT INTO documents
-      (id, title, file_path, file_size, mime_type, uploaded_by, assigned_to_user, assigned_to_department, status, created_at, updated_at, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?)
+      (id, title, file_path, file_size, mime_type, uploaded_by, assigned_to_user, status, created_at, updated_at, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?)
     `;
     const docParams = [
       documentId,
@@ -134,11 +123,10 @@ export async function POST(request: NextRequest) {
       file.type,
       userId,
       assignedToUser,
-      assignedToDepartment,
       description,
     ];
 
-    // Insert document row (no explicit transaction)
+    // Insert document row
     try {
       await DatabaseService.query(docSql, docParams);
       console.log("✅ Document row inserted:", documentId);
@@ -149,32 +137,40 @@ export async function POST(request: NextRequest) {
       try {
         if (filePath && fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
-          console.log("🗑️ Removed uploaded file after document insert failure:", filePath);
+          console.log(
+            "🗑️ Removed uploaded file after document insert failure:",
+            filePath
+          );
         }
       } catch (unlinkErr) {
-        console.error("Failed to remove file after document insert failure:", unlinkErr);
+        console.error(
+          "Failed to remove file after document insert failure:",
+          unlinkErr
+        );
       }
       return NextResponse.json(
-        { error: "Failed to insert document", detail: String(docErr?.message ?? docErr) },
+        {
+          error: "Failed to insert document",
+          detail: String(docErr?.message ?? docErr),
+        },
         { status: 500 }
       );
     }
 
-    // Prepare assignment insert SQL
+    // Prepare assignment insert SQL (REMOVED department_id)
     const assignmentId = randomUUID();
     const assignmentSql = `
       INSERT INTO document_assignments
-        (id, document_id, assigned_to, assigned_by, department_id, roles, status, notified_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+        (id, document_id, assigned_to, assigned_by, roles, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
     `;
     const assignmentParams = [
       assignmentId,
       documentId,
       assignedToUser,
       userId,
-      assignedToDepartment,
-      "Author",
-      "active",
+      "Reviewer",
+      "assigned",
     ];
 
     // Insert assignment row
@@ -192,10 +188,9 @@ export async function POST(request: NextRequest) {
             id: assignmentId,
             document_id: documentId,
             assigned_to: assignedToUser,
-            department_id: assignedToDepartment,
             assigned_by: userId,
-            roles: "Author",
-            status: "active",
+            roles: "Reviewer",
+            status: "assigned",
           },
         },
         { status: 201 }
@@ -206,24 +201,41 @@ export async function POST(request: NextRequest) {
 
       // attempt to delete the previously inserted document row
       try {
-        await DatabaseService.query("DELETE FROM documents WHERE id = ?", [documentId]);
-        console.log("🗑️ Deleted document row after assignment insert failure:", documentId);
+        await DatabaseService.query("DELETE FROM documents WHERE id = ?", [
+          documentId,
+        ]);
+        console.log(
+          "🗑️ Deleted document row after assignment insert failure:",
+          documentId
+        );
       } catch (delErr) {
-        logDbError("Failed to delete document row after assignment failure:", delErr);
+        logDbError(
+          "Failed to delete document row after assignment failure:",
+          delErr
+        );
       }
 
       // remove the uploaded file
       try {
         if (filePath && fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
-          console.log("🗑️ Removed uploaded file after assignment failure:", filePath);
+          console.log(
+            "🗑️ Removed uploaded file after assignment failure:",
+            filePath
+          );
         }
       } catch (unlinkErr) {
-        logDbError("Failed to remove file after assignment insert failure:", unlinkErr);
+        logDbError(
+          "Failed to remove file after assignment insert failure:",
+          unlinkErr
+        );
       }
 
       return NextResponse.json(
-        { error: "Failed to create document assignment", detail: String(assignErr?.message ?? assignErr) },
+        {
+          error: "Failed to create document assignment",
+          detail: String(assignErr?.message ?? assignErr),
+        },
         { status: 500 }
       );
     }

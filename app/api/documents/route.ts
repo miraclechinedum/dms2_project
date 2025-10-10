@@ -31,44 +31,34 @@ export async function GET(request: NextRequest) {
 
     console.log("✅ Fetching documents for user:", userId);
 
-    // First fetch user department
-    const userSql = `SELECT department_id FROM users WHERE id = ?`;
-    const userRes: any = await DatabaseService.query(userSql, [userId]);
-    const userRows: any[] = Array.isArray(userRes)
-      ? Array.isArray(userRes[0])
-        ? userRes[0]
-        : userRes
-      : [];
-    const departmentId = userRows[0]?.department_id ?? null;
-
-    // Main documents query:
+    // Simplified documents query:
     // - include documents uploaded by user
-    // - OR documents that have assignment rows where assigned_to = user OR assigned_by = user OR department_id = user's department
+    // - OR documents assigned to user via document_assignments
     const sql = `
-      SELECT
+      SELECT DISTINCT
         d.id,
         d.title,
         d.file_path,
         d.file_size,
         d.uploaded_by,
+        d.assigned_to_user,
         d.status,
         d.created_at,
         d.updated_at,
-        u.name AS uploader_name
+        u.name AS uploader_name,
+        u_assigned.name AS assigned_user_name
       FROM documents d
       LEFT JOIN users u ON u.id = d.uploaded_by
+      LEFT JOIN users u_assigned ON u_assigned.id = d.assigned_to_user
       WHERE
         d.uploaded_by = ?
-      OR EXISTS (
-        SELECT 1
-        FROM document_assignments da
-        WHERE da.document_id = d.id
-          AND (
-            da.assigned_to = ?
-            OR da.assigned_by = ?
-            OR da.department_id = ?
-          )
-      )
+        OR d.assigned_to_user = ?
+        OR EXISTS (
+          SELECT 1
+          FROM document_assignments da
+          WHERE da.document_id = d.id
+            AND (da.assigned_to = ? OR da.assigned_by = ?)
+        )
       ORDER BY d.created_at DESC
     `;
 
@@ -76,7 +66,7 @@ export async function GET(request: NextRequest) {
       userId,
       userId,
       userId,
-      departmentId,
+      userId,
     ]);
 
     // Normalize to rows array:
@@ -101,8 +91,7 @@ export async function GET(request: NextRequest) {
     // Prepare placeholders for IN (...) clause
     const placeholders = docIds.map(() => "?").join(",");
 
-    // Query to fetch all assignment rows for these documents + user/department names
-    // We include assigned_to (user), assigned_by (user who made assignment), and department name
+    // Query to fetch all assignment rows for these documents (REMOVED department fields)
     const assignmentsSql = `
       SELECT
         da.id AS assignment_id,
@@ -111,8 +100,6 @@ export async function GET(request: NextRequest) {
         u_assigned.name AS assigned_to_name,
         da.assigned_by,
         u_by.name AS assigned_by_name,
-        da.department_id,
-        dpt.name AS department_name,
         da.roles,
         da.status AS assignment_status,
         da.notified_at,
@@ -121,7 +108,6 @@ export async function GET(request: NextRequest) {
       FROM document_assignments da
       LEFT JOIN users u_assigned ON u_assigned.id = da.assigned_to
       LEFT JOIN users u_by ON u_by.id = da.assigned_by
-      LEFT JOIN departments dpt ON dpt.id = da.department_id
       WHERE da.document_id IN (${placeholders})
       ORDER BY da.created_at ASC
     `;
@@ -152,8 +138,6 @@ export async function GET(request: NextRequest) {
         assigned_to_name: ar.assigned_to_name ?? null,
         assigned_by: ar.assigned_by ?? null,
         assigned_by_name: ar.assigned_by_name ?? null,
-        department_id: ar.department_id ?? null,
-        department_name: ar.department_name ?? null,
         roles: ar.roles ?? null,
         status: ar.assignment_status ?? null,
         notified_at: ar.notified_at ?? null,
@@ -162,10 +146,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Map documents to the shape expected by the client, including assignments array per document
+    // Map documents to the shape expected by the client
     const documents = docRows.map((r: any) => {
       const fileSize =
-        typeof r.file_size === "number" ? r.file_size : Number(r.file_size ?? 0);
+        typeof r.file_size === "number"
+          ? r.file_size
+          : Number(r.file_size ?? 0);
 
       const assignments = assignmentsByDoc[r.id] ?? [];
 
@@ -173,10 +159,12 @@ export async function GET(request: NextRequest) {
         id: r.id,
         title: r.title,
         file_path: r.file_path,
-        file_url: r.file_path, // same as file_path (Cloudinary URL or similar)
+        file_url: r.file_path,
         file_size: fileSize,
         uploaded_by: r.uploaded_by,
         uploader_name: r.uploader_name ?? null,
+        assigned_to_user: r.assigned_to_user,
+        assigned_user_name: r.assigned_user_name ?? null,
         status: r.status ?? "active",
         created_at: r.created_at,
         updated_at: r.updated_at,

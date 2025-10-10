@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { useAuth } from "@/hooks/use-auth";
-import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,33 +23,23 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Upload, FileText, X, Users, Building2 } from "lucide-react";
+import { Upload, FileText, X, Search, Users } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { cn } from "@/lib/utils";
-
-interface Department {
-  id: string;
-  name: string;
-}
 
 interface User {
   id: string;
   name: string;
   email: string;
-  department_id: string;
 }
 
 export default function UploadPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assignmentType, setAssignmentType] = useState<"user" | "department">(
-    "department"
-  );
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedUser, setSelectedUser] = useState<string>("");
   const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -63,28 +52,31 @@ export default function UploadPage() {
       router.push("/");
       return;
     }
-    fetchDepartments();
     fetchUsers();
   }, [user, router]);
 
-  const fetchDepartments = async () => {
-    try {
-      const response = await fetch("/api/departments");
-      if (response.ok) {
-        const { departments } = await response.json();
-        setDepartments(departments);
-      }
-    } catch (error) {
-      console.error("Failed to fetch departments:", error);
+  useEffect(() => {
+    if (searchQuery) {
+      const filtered = users.filter(
+        (u) =>
+          u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.email.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredUsers(filtered);
+    } else {
+      setFilteredUsers(users);
     }
-  };
+  }, [searchQuery, users]);
 
   const fetchUsers = async () => {
     try {
       const response = await fetch("/api/users");
       if (response.ok) {
         const { users } = await response.json();
-        setUsers(users);
+        // Filter out current user
+        const otherUsers = users.filter((u: User) => u.id !== user?.id);
+        setUsers(otherUsers);
+        setFilteredUsers(otherUsers);
       }
     } catch (error) {
       console.error("Failed to fetch users:", error);
@@ -114,35 +106,14 @@ export default function UploadPage() {
     maxFiles: 1,
   });
 
-  const handleUserSelection = (userId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedUsers([...selectedUsers, userId]);
-    } else {
-      setSelectedUsers(selectedUsers.filter((id) => id !== userId));
-    }
-  };
-
-  const handleDepartmentSelection = (deptId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedDepartments([...selectedDepartments, deptId]);
-    } else {
-      setSelectedDepartments(selectedDepartments.filter((id) => id !== deptId));
-    }
-  };
-
   const uploadDocument = async () => {
     if (!selectedFile || !title || !user) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    if (assignmentType === "user" && selectedUsers.length === 0) {
-      toast.error("Please select at least one user");
-      return;
-    }
-
-    if (assignmentType === "department" && selectedDepartments.length === 0) {
-      toast.error("Please select at least one department");
+    if (!selectedUser) {
+      toast.error("Please select a user to assign the document to");
       return;
     }
 
@@ -154,17 +125,8 @@ export default function UploadPage() {
       formData.append("file", selectedFile);
       formData.append("title", title);
       formData.append("description", description);
-      formData.append("assignmentType", assignmentType);
-
-      if (assignmentType === "user") {
-        selectedUsers.forEach((userId) => {
-          formData.append("assignedUsers", userId);
-        });
-      } else {
-        selectedDepartments.forEach((deptId) => {
-          formData.append("assignedDepartments", deptId);
-        });
-      }
+      formData.append("assignmentType", "user");
+      formData.append("assignedUsers", selectedUser);
 
       // Simulate upload progress
       const progressInterval = setInterval(() => {
@@ -221,7 +183,7 @@ export default function UploadPage() {
                 Upload Document
               </CardTitle>
               <CardDescription>
-                Upload a PDF document and assign it to users or departments
+                Upload a PDF document and assign it to a user for review
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -250,111 +212,66 @@ export default function UploadPage() {
                 </div>
               </div>
 
-              {/* Assignment Type */}
-              <div>
-                <Label>Assignment Type *</Label>
-                <Select
-                  value={assignmentType}
-                  onValueChange={(value: "user" | "department") => {
-                    setAssignmentType(value);
-                    setSelectedUsers([]);
-                    setSelectedDepartments([]);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="user">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4" />
-                        Assign to Users
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="department">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4" />
-                        Assign to Departments
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* User Selection */}
-              {assignmentType === "user" && (
-                <div>
-                  <Label>Select Users *</Label>
-                  <Card className="p-4">
-                    <div className="space-y-3 max-h-48 overflow-y-auto">
-                      {users.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center space-x-2"
-                        >
-                          <Checkbox
-                            id={`user-${user.id}`}
-                            checked={selectedUsers.includes(user.id)}
-                            onCheckedChange={(checked) =>
-                              handleUserSelection(user.id, checked as boolean)
-                            }
-                          />
-                          <Label
-                            htmlFor={`user-${user.id}`}
-                            className="text-sm font-normal cursor-pointer flex-1"
-                          >
-                            {user.name} ({user.email})
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                    {selectedUsers.length > 0 && (
-                      <p className="text-sm text-gray-600 mt-2">
-                        {selectedUsers.length} user(s) selected
-                      </p>
-                    )}
-                  </Card>
-                </div>
-              )}
+              <div>
+                <Label>Assign to User *</Label>
+                <div className="space-y-3">
+                  {/* Search Input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search users by name or email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
 
-              {/* Department Selection */}
-              {assignmentType === "department" && (
-                <div>
-                  <Label>Select Departments *</Label>
+                  {/* User List */}
                   <Card className="p-4">
                     <div className="space-y-3 max-h-48 overflow-y-auto">
-                      {departments.map((dept) => (
-                        <div
-                          key={dept.id}
-                          className="flex items-center space-x-2"
-                        >
-                          <Checkbox
-                            id={`dept-${dept.id}`}
-                            checked={selectedDepartments.includes(dept.id)}
-                            onCheckedChange={(checked) =>
-                              handleDepartmentSelection(
-                                dept.id,
-                                checked as boolean
-                              )
-                            }
-                          />
-                          <Label
-                            htmlFor={`dept-${dept.id}`}
-                            className="text-sm font-normal cursor-pointer flex-1"
+                      {filteredUsers.length > 0 ? (
+                        filteredUsers.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center space-x-3 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => setSelectedUser(user.id)}
                           >
-                            {dept.name}
-                          </Label>
-                        </div>
-                      ))}
+                            <div
+                              className={cn(
+                                "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                                selectedUser === user.id
+                                  ? "bg-primary border-primary"
+                                  : "border-gray-300"
+                              )}
+                            >
+                              {selectedUser === user.id && (
+                                <div className="w-2 h-2 rounded-full bg-white" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{user.name}</p>
+                              <p className="text-xs text-gray-600">
+                                {user.email}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-gray-500 text-center py-4">
+                          No users found
+                        </p>
+                      )}
                     </div>
-                    {selectedDepartments.length > 0 && (
+                    {selectedUser && (
                       <p className="text-sm text-gray-600 mt-2">
-                        {selectedDepartments.length} department(s) selected
+                        Selected:{" "}
+                        {users.find((u) => u.id === selectedUser)?.name}
                       </p>
                     )}
                   </Card>
                 </div>
-              )}
+              </div>
 
               {/* File Upload Area */}
               <div>
@@ -422,7 +339,9 @@ export default function UploadPage() {
 
               <Button
                 onClick={uploadDocument}
-                disabled={!selectedFile || !title || isUploading}
+                disabled={
+                  !selectedFile || !title || !selectedUser || isUploading
+                }
                 className="w-full"
               >
                 {isUploading ? "Uploading..." : "Upload Document"}

@@ -3,13 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { Header } from "@/components/layout/header";
-import { Sidebar } from "@/components/layout/sidebar";
 import { DocumentUploadDrawer } from "@/components/documents/document-upload-drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -25,25 +22,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  FileText,
-  Search,
-  Eye,
-  Upload,
-  User,
-  Building2,
-  ArrowUpDown,
-} from "lucide-react";
+import { FileText, Search, Eye, Upload, ArrowUpDown } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "react-hot-toast";
 import { Toaster } from "react-hot-toast";
 
 interface Assignment {
   id: string;
-  assigned_to_user?: string | null;
-  assigned_to_department?: string | null;
-  assigned_user_name?: string | null;
-  assigned_department_name?: string | null;
+  assigned_to?: string | null;
+  assigned_to_name?: string | null;
+  assigned_by?: string | null;
+  assigned_by_name?: string | null;
+  roles?: string | null;
+  status?: string | null;
 }
 
 interface Document {
@@ -52,6 +43,8 @@ interface Document {
   file_path: string;
   file_size: number;
   uploaded_by: string | null;
+  assigned_to_user?: string | null;
+  assigned_user_name?: string | null;
   created_at: string;
   updated_at: string | null;
   uploader_name?: string | null;
@@ -125,11 +118,10 @@ export default function DocumentsPage() {
         (doc) =>
           doc.title.toLowerCase().includes(q) ||
           (doc.uploader_name ?? "").toLowerCase().includes(q) ||
-          // Also search in assigned names
-          (doc.assignments ?? []).some(
-            (a) =>
-              (a.assigned_user_name ?? "").toLowerCase().includes(q) ||
-              (a.assigned_department_name ?? "").toLowerCase().includes(q)
+          (doc.assigned_user_name ?? "").toLowerCase().includes(q) ||
+          // Also search in assignment names
+          (doc.assignments ?? []).some((a) =>
+            (a.assigned_to_name ?? "").toLowerCase().includes(q)
           )
       );
     }
@@ -146,10 +138,17 @@ export default function DocumentsPage() {
   };
 
   const getAssignedLabel = (doc: Document) => {
+    // First check direct assignment on document
+    if (doc.assigned_user_name) {
+      return doc.assigned_user_name;
+    }
+
+    // Then check assignments history
     if (!doc.assignments || doc.assignments.length === 0) return null;
-    // prefer assigned user name if present, else department
-    const a = doc.assignments[0];
-    return a.assigned_user_name ?? a.assigned_department_name ?? null;
+
+    // Get the most recent assignment
+    const mostRecent = doc.assignments[doc.assignments.length - 1];
+    return mostRecent.assigned_to_name ?? null;
   };
 
   // Sorting logic
@@ -354,7 +353,7 @@ export default function DocumentsPage() {
                 <CardHeader>
                   <CardTitle>Documents ({filteredDocuments.length})</CardTitle>
                   <CardDescription>
-                    List of documents assigned to you or your department
+                    List of documents assigned to you or uploaded by you
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

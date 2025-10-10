@@ -7,9 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import WebViewer from "@/components/pdf/WebViewer";
-import { ArrowLeft, User, Building2, FileText, StickyNote } from "lucide-react";
+import {
+  ArrowLeft,
+  User,
+  FileText,
+  StickyNote,
+  Search,
+  Check,
+} from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
+import { cn } from "@/lib/utils";
 
 /* ------------------------------- Types ------------------------------- */
 interface Annotation {
@@ -33,12 +42,10 @@ interface Assignment {
   assigned_to_name?: string | null;
   assigned_by?: string | null;
   assigned_by_name?: string | null;
-  department_id?: string | null;
-  department_name?: string | null;
   roles?: string | null;
   status?: string | null;
   notified_at?: string | null;
-  assigned_at?: string | null; // created_at from DB
+  assigned_at?: string | null;
   updated_at?: string | null;
 }
 
@@ -53,19 +60,18 @@ interface DocumentData {
   created_at?: string;
   uploader_name?: string;
   assigned_to_user?: string | null;
-  assigned_to_department?: string | null;
   assigned_user_name?: string | null;
-  assigned_department_name?: string | null;
-  locked_by?: string | null;
-  locked_by_name?: string | null;
-  locked_at?: string | null;
-  // assignment history (optional; filled by API if available)
   assignments?: Assignment[];
+}
+
+interface User {
+  id: string;
+  name: string;
+  email?: string;
 }
 
 /* --------------------------- Helpers / Utils ------------------------- */
 
-// Customized date format like: 12th sept, 2025 3:07pm
 const formatDateTimeCustom = (dateString?: string | null) => {
   if (!dateString) return "";
   try {
@@ -88,10 +94,9 @@ const formatDateTimeCustom = (dateString?: string | null) => {
 
     const monthShort = date
       .toLocaleDateString("en-US", { month: "short" })
-      .toLowerCase(); // "sep"
+      .toLowerCase();
     const year = date.getFullYear();
 
-    // 12-hour time
     let hour = date.getHours();
     const minute = date.getMinutes().toString().padStart(2, "0");
     const ampm = hour >= 12 ? "pm" : "am";
@@ -112,64 +117,53 @@ const formatFileSize = (bytes: number) => {
   return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i];
 };
 
-const getAnnotationTypeLabel = (type: string) => {
-  switch (type) {
-    case "sticky_note":
-      return "Note";
-    case "highlight":
-      return "Highlight";
-    case "drawing":
-      return "Drawing";
-    default:
-      return "Note";
-  }
-};
-
-/* ------------------------------- Component ---------------------------- */
-
 export default function DocumentViewerPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user: currentUser } = useAuth();
 
   const [document, setDocument] = useState<DocumentData | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [assignmentHistory, setAssignmentHistory] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Notify/Assign dropdown state
   const [assignOpen, setAssignOpen] = useState(false);
   const assignBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  // Users for dropdown
-  const [users, setUsers] = useState<
-    { id: string; name: string; email?: string }[]
-  >([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [assignSubmitting, setAssignSubmitting] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
-  // Datatable controls for assignment history
   const [currentPage, setCurrentPage] = useState(1);
   const [jumpPageInput, setJumpPageInput] = useState("");
   const perPage = 5;
 
-  // Derived permission: who is last assigned user (most recent assignment with assigned_to)
-  const lastAssigned =
-    assignmentHistory.length > 0 ? assignmentHistory[0] : null; // we will fetch ordered by created_at DESC
-  const currentUserHoldsLock = Boolean(
-    document?.locked_by &&
-      user &&
-      String(document.locked_by) === String(user?.id)
-  );
-  const currentUserIsLastAssignee = Boolean(
-    user && lastAssigned && String(user.id) === String(lastAssigned.assigned_to)
-  );
-  const canAnnotate = currentUserIsLastAssignee || currentUserHoldsLock;
+  // Permission: Only assigned user can annotate
+  const isAssignedUser =
+    currentUser &&
+    document?.assigned_to_user &&
+    String(currentUser.id) === String(document.assigned_to_user);
 
-  // Fetch document metadata (and assignments if API includes them)
+  // Debug logging
   useEffect(() => {
-    if (!user) {
+    if (document && currentUser) {
+      console.log("🔍 [DEBUG] Assignment Check:");
+      console.log("Current user ID:", currentUser.id, typeof currentUser.id);
+      console.log(
+        "Document assigned to:",
+        document.assigned_to_user,
+        typeof document.assigned_to_user
+      );
+      console.log("isAssignedUser result:", isAssignedUser);
+    }
+  }, [document, currentUser, isAssignedUser]);
+
+  // Fetch document metadata
+  useEffect(() => {
+    if (!currentUser) {
       router.push("/");
       return;
     }
@@ -177,18 +171,31 @@ export default function DocumentViewerPage() {
       fetchDocument();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, params.id]);
+  }, [currentUser, params.id]);
 
-  // Fetch annotations automatically when document changes (keeps WebViewer in sync)
+  // Fetch annotations and assignment history when document changes
   useEffect(() => {
     if (document) {
       fetchAnnotations();
-      fetchAssignmentHistory(); // fetch history whenever document loads/refreshes
+      fetchAssignmentHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document]);
 
-  // fetch document
+  // Filter users based on search query
+  useEffect(() => {
+    if (searchQuery) {
+      const filtered = users.filter(
+        (u) =>
+          u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (u.email || "").toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredUsers(filtered.slice(0, 5)); // Show only 5 results
+    } else {
+      setFilteredUsers(users.slice(0, 5)); // Show only 5 latest users by default
+    }
+  }, [searchQuery, users]);
+
   const fetchDocument = async () => {
     setLoading(true);
     try {
@@ -202,7 +209,6 @@ export default function DocumentViewerPage() {
       }
       const { document } = await res.json();
 
-      // Ensure proper file URL
       let fileUrl = document.file_url;
       if (!fileUrl && document.file_path) {
         fileUrl = document.file_path.startsWith("/")
@@ -222,7 +228,6 @@ export default function DocumentViewerPage() {
     }
   };
 
-  // fetch assignment history for this document
   const fetchAssignmentHistory = async () => {
     if (!document) return;
     try {
@@ -236,15 +241,13 @@ export default function DocumentViewerPage() {
         return;
       }
       const { assignments } = await res.json();
-      // Expecting assignments ordered by created_at DESC (most recent first)
       setAssignmentHistory(Array.isArray(assignments) ? assignments : []);
-      setCurrentPage(1); // reset pagination when new data arrives
+      setCurrentPage(1);
     } catch (err) {
       console.error("fetchAssignmentHistory error", err);
     }
   };
 
-  // fetch annotations automatically (no manual refresh button)
   const fetchAnnotations = async () => {
     if (!document) return;
     try {
@@ -260,7 +263,6 @@ export default function DocumentViewerPage() {
     }
   };
 
-  // handlers for WebViewer callbacks (keeps UI state in sync)
   const handleAnnotationSave = (annotation: Annotation) => {
     setAnnotations((prev) => {
       const existing = prev.find((a) => a.id === annotation.id);
@@ -276,26 +278,42 @@ export default function DocumentViewerPage() {
     setAnnotations((prev) => prev.filter((a) => a.id !== annotationId));
   };
 
-  // Assign dropdown: load users when opened
+  // Load users for assignment dropdown
   useEffect(() => {
     if (!assignOpen) return;
     setLoadingUsers(true);
-    fetch("/api/users?limit=200")
+    setSearchQuery("");
+    setSelectedUser(null);
+
+    fetch("/api/users?limit=100")
       .then((r) => r.json())
       .then((j) => {
         const list = j?.users || j?.data || [];
-        setUsers(list);
+        // Filter out current user to prevent self-assignment
+        const otherUsers = list.filter(
+          (u: User) => String(u.id) !== String(currentUser?.id)
+        );
+        setUsers(otherUsers);
+        setFilteredUsers(otherUsers.slice(0, 5)); // Show only 5 latest by default
       })
       .catch((e) => {
         console.warn("Failed to load users for assign dropdown", e);
         toast.error("Failed to load users");
       })
       .finally(() => setLoadingUsers(false));
-  }, [assignOpen]);
+  }, [assignOpen, currentUser]);
 
   const handleNotify = async () => {
     if (!document) return;
     if (!selectedUser) return toast.error("Select a user to notify");
+
+    console.log("🚀 [FRONTEND] Starting assignment process:");
+    console.log("Document ID:", document.id);
+    console.log("Document current assignee:", document.assigned_to_user);
+    console.log("Current user ID:", currentUser?.id);
+    console.log("Selected user ID:", selectedUser);
+    console.log("isAssignedUser:", isAssignedUser);
+
     setAssignSubmitting(true);
     try {
       const res = await fetch(
@@ -305,38 +323,48 @@ export default function DocumentViewerPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             assigned_to: selectedUser,
-            giveLock: true,
             notify: true,
           }),
         }
       );
-      const json = await res.json().catch(() => ({}));
+
+      const responseText = await res.text();
+      console.log("📨 Backend response status:", res.status);
+      console.log("📨 Backend response body:", responseText);
+
+      let json;
+      try {
+        json = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Failed to parse JSON response:", e);
+        json = {};
+      }
+
       if (!res.ok) {
-        console.error("assign failed:", res.status, json);
-        toast.error(json?.error || "Assign failed");
+        console.error("❌ Assign failed:", res.status, json);
+        toast.error(json?.error || `Assign failed with status ${res.status}`);
       } else {
-        toast.success("User notified and lock transferred");
+        console.log("✅ Assign successful:", json);
+        toast.success("User notified and document assigned");
         setAssignOpen(false);
         setSelectedUser(null);
-        // update UI using returned document or re-fetch
-        // server returns updated document in assign route — refresh both
+        setSearchQuery("");
         fetchDocument();
         fetchAssignmentHistory();
         fetchAnnotations();
       }
     } catch (err) {
-      console.error("assign failed", err);
+      console.error("❌ Assign failed", err);
       toast.error("Failed to assign, check console");
     } finally {
       setAssignSubmitting(false);
     }
   };
 
-  // Pagination helpers for assignment history (no search)
+  // Pagination
   const total = assignmentHistory.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
-  // ensure currentPage in bounds
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
     if (currentPage < 1) setCurrentPage(1);
@@ -354,7 +382,6 @@ export default function DocumentViewerPage() {
     setJumpPageInput("");
   };
 
-  // Safety UI while loading / auth checks
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -372,7 +399,7 @@ export default function DocumentViewerPage() {
     );
   }
 
-  if (!user) {
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="flex h-screen">
@@ -408,10 +435,6 @@ export default function DocumentViewerPage() {
     );
   }
 
-  // determine a best-effort lastAssignedUserId to pass into WebViewer:
-  const bestLastAssignedUserId =
-    lastAssigned?.assigned_to ?? document.assigned_to_user ?? undefined;
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
@@ -437,102 +460,176 @@ export default function DocumentViewerPage() {
             </div>
 
             <div className="flex items-center space-x-2 relative">
-              {/* Notify / Assign button */}
-              <Button
-                ref={assignBtnRef}
-                // red background; respects disabled state visually
-                className={`px-3 py-1.5 text-white text-sm rounded ${
-                  currentUserIsLastAssignee
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-red-600 opacity-60 cursor-not-allowed"
-                }`}
-                size="sm"
-                onClick={() => setAssignOpen((s) => !s)}
-                title={
-                  currentUserIsLastAssignee
-                    ? "Notify next reviewer and (optionally) transfer lock"
-                    : "Only the user the document was last assigned to can notify/assign"
-                }
-                disabled={!currentUserIsLastAssignee}
-              >
-                Notify / Assign
-              </Button>
+              {/* Notify / Assign button - Only shown to assigned user */}
+              {isAssignedUser && (
+                <>
+                  <Button
+                    ref={assignBtnRef}
+                    className="px-3 py-1.5 text-white text-sm rounded bg-red-600 hover:bg-red-700"
+                    size="sm"
+                    onClick={() => setAssignOpen((s) => !s)}
+                    title="Notify next reviewer and transfer assignment"
+                  >
+                    Notify / Assign
+                  </Button>
 
-              {/* Inline dropdown panel */}
-              {assignOpen && (
-                <div className="absolute right-0 mt-12 z-50 w-[320px] bg-white border rounded shadow-lg p-3">
-                  <h4 className="font-semibold mb-2">
-                    Notify / Assign next reviewer
-                  </h4>
-                  <p className="text-xs text-gray-600 mb-3">
-                    Choose a user to notify and optionally transfer the lock.
-                  </p>
+                  {/* Inline dropdown panel */}
+                  {assignOpen && (
+                    <div className="absolute right-0 mt-12 z-50 w-[400px] bg-white border rounded-lg shadow-xl p-4">
+                      <h4 className="font-semibold mb-3 text-lg">
+                        Assign Document
+                      </h4>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Select a user to assign this document to. You cannot
+                        assign to yourself.
+                      </p>
 
-                  <div className="mb-3">
-                    {loadingUsers ? (
-                      <div className="text-sm text-gray-500">
-                        Loading users...
+                      {/* Search Input */}
+                      <div className="relative mb-4">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="Search users by name or email..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10"
+                        />
                       </div>
-                    ) : (
-                      <select
-                        className="w-full border p-2 rounded"
-                        value={selectedUser ?? ""}
-                        onChange={(e) =>
-                          setSelectedUser(e.target.value || null)
-                        }
-                      >
-                        <option value="">-- select user --</option>
-                        {users.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name} {u.email ? `(${u.email})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
 
-                  <div className="flex justify-end gap-2">
-                    <button
-                      className="px-3 py-2 rounded border"
-                      onClick={() => {
-                        setAssignOpen(false);
-                        setSelectedUser(null);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="px-3 py-2 rounded bg-red-600 text-white disabled:opacity-60"
-                      onClick={handleNotify}
-                      disabled={assignSubmitting || !selectedUser}
-                    >
-                      {assignSubmitting ? "Sending..." : "Notify"}
-                    </button>
-                  </div>
-                </div>
+                      {/* User List */}
+                      <div className="mb-4 max-h-60 overflow-y-auto">
+                        {loadingUsers ? (
+                          <div className="text-center py-4">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2" />
+                            <p className="text-sm text-gray-500">
+                              Loading users...
+                            </p>
+                          </div>
+                        ) : filteredUsers.length > 0 ? (
+                          <div className="space-y-2">
+                            {filteredUsers.map((user) => (
+                              <div
+                                key={user.id}
+                                className={cn(
+                                  "flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-all",
+                                  selectedUser === user.id
+                                    ? "border-primary bg-primary/5"
+                                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                )}
+                                onClick={() => setSelectedUser(user.id)}
+                              >
+                                <div
+                                  className={cn(
+                                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                                    selectedUser === user.id
+                                      ? "bg-primary border-primary"
+                                      : "border-gray-300"
+                                  )}
+                                >
+                                  {selectedUser === user.id && (
+                                    <Check className="w-3 h-3 text-white" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm truncate">
+                                    {user.name}
+                                  </p>
+                                  {user.email && (
+                                    <p className="text-xs text-gray-600 truncate">
+                                      {user.email}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-4">
+                            <User className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                            <p className="text-sm text-gray-500">
+                              No users found
+                            </p>
+                            {searchQuery && (
+                              <p className="text-xs text-gray-400 mt-1">
+                                Try a different search term
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Selected User Display */}
+                      {selectedUser && (
+                        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm font-medium text-green-800">
+                            Selected:{" "}
+                            {users.find((u) => u.id === selectedUser)?.name}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex justify-end gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setAssignOpen(false);
+                            setSelectedUser(null);
+                            setSearchQuery("");
+                          }}
+                          disabled={assignSubmitting}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleNotify}
+                          disabled={assignSubmitting || !selectedUser}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          {assignSubmitting ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                              Assigning...
+                            </>
+                          ) : (
+                            "Assign & Notify"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Status badge for non-assigned users */}
+              {!isAssignedUser && document.assigned_user_name && (
+                <Badge
+                  variant="secondary"
+                  className="bg-yellow-100 text-yellow-800"
+                >
+                  Assigned to: {document.assigned_user_name}
+                </Badge>
               )}
             </div>
           </div>
 
           {/* Main Content */}
           <div className="flex-1 flex overflow-auto">
-            {/* PDF Viewer */}
+            {/* PDF Viewer with permission control */}
             <div className="flex-1 bg-gray-100">
               {document.file_url && (
                 <WebViewer
                   documentUrl={document.file_url}
                   documentId={document.id}
-                  currentUserId={user.id}
-                  currentUserName={user.name || user.email}
+                  currentUserId={currentUser.id}
+                  currentUserName={currentUser.name || currentUser.email}
+                  assignedToUserId={document.assigned_to_user}
                   onAnnotationSave={
-                    canAnnotate ? handleAnnotationSave : undefined
+                    isAssignedUser ? handleAnnotationSave : undefined
                   }
                   onAnnotationDelete={
-                    canAnnotate ? handleAnnotationDelete : undefined
+                    isAssignedUser ? handleAnnotationDelete : undefined
                   }
                   existingAnnotations={annotations}
-                  readOnly={!canAnnotate}
-                  lastAssignedUserId={bestLastAssignedUserId} // <-- PASS lastAssignedUserId so WebViewer knows who should see the toolbar
                 />
               )}
             </div>
@@ -544,49 +641,34 @@ export default function DocumentViewerPage() {
                   <FileText className="h-4 w-4 text-primary" />
                   Document Info
                 </h3>
-
                 <div className="space-y-2 text-sm">
                   <div>
-                    <span className="font-medium">Lock:</span>
+                    <span className="font-medium">Assignment Status:</span>
                     <span className="ml-2 text-xs text-gray-600">
-                      {document.locked_by
-                        ? `Locked by ${
-                            document.locked_by_name ?? document.locked_by
-                          } ${
-                            document.locked_at
-                              ? `since ${formatDateTimeCustom(
-                                  document.locked_at
-                                )}`
-                              : ""
-                          }`
-                        : "Not locked"}
+                      {document.assigned_user_name
+                        ? `Assigned to ${document.assigned_user_name}`
+                        : "Not assigned"}
                     </span>
                   </div>
-
-                  {(document.assigned_to_user ||
-                    document.assigned_to_department) && (
-                    <div className="mt-3">
-                      <h4 className="font-medium text-sm mb-2">Assigned to:</h4>
-                      <div className="space-y-1">
-                        {document.assigned_to_user && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <User className="h-3 w-3 text-primary" />
-                            <span>{document.assigned_user_name}</span>
-                          </div>
-                        )}
-                        {document.assigned_to_department && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <Building2 className="h-3 w-3 text-primary" />
-                            <span>{document.assigned_department_name}</span>
-                          </div>
-                        )}
-                      </div>
+                  {!isAssignedUser && document.assigned_user_name && (
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                      <p className="text-xs text-yellow-800">
+                        ⚠️ Only {document.assigned_user_name} can annotate this
+                        document
+                      </p>
+                    </div>
+                  )}
+                  {isAssignedUser && (
+                    <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                      <p className="text-xs text-green-800">
+                        ✅ You are the assigned reviewer
+                      </p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Routing / Assignment History (datatable-like) */}
+              {/* Routing / Assignment History */}
               <div className="p-4 border-b">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -594,8 +676,6 @@ export default function DocumentViewerPage() {
                     Routing / Assignment History
                   </h3>
                 </div>
-
-                {/* removed search box per request */}
               </div>
 
               <ScrollArea className="flex-1">
@@ -617,18 +697,14 @@ export default function DocumentViewerPage() {
                               {a.roles ?? "Editor"}
                             </Badge>
                             <div className="text-sm font-medium">
-                              {a.assigned_to_name ??
-                                a.department_name ??
-                                "Unspecified"}
+                              {a.assigned_to_name ?? "Unspecified"}
                             </div>
                           </div>
-
-                          {/* removed top-right status badge per request */}
                         </div>
 
                         <div className="mb-2 text-xs text-gray-600">
                           <div>
-                            Notified by:{" "}
+                            Assigned by:{" "}
                             <span className="font-medium">
                               {a.assigned_by_name ?? a.assigned_by ?? "System"}
                             </span>
@@ -661,7 +737,7 @@ export default function DocumentViewerPage() {
                     </div>
                   )}
 
-                  {/* Pagination controls - numbered */}
+                  {/* Pagination controls */}
                   {total > perPage && (
                     <div className="flex items-center justify-between mt-2">
                       <div className="text-xs text-gray-600">
@@ -680,7 +756,6 @@ export default function DocumentViewerPage() {
                           Prev
                         </button>
 
-                        {/* page number buttons */}
                         <div className="flex items-center gap-1">
                           {Array.from(
                             { length: totalPages },
@@ -710,7 +785,6 @@ export default function DocumentViewerPage() {
                           Next
                         </button>
 
-                        {/* Jump to page input */}
                         <div className="flex items-center gap-2 ml-2">
                           <input
                             type="number"
