@@ -57,6 +57,7 @@
     "html2canvas": "^1.4.1",
     "input-otp": "^1.2.4",
     "jose": "^6.1.0",
+    "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.2",
     "lucide-react": "^0.446.0",
     "mysql2": "^3.14.4",

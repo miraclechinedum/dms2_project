@@ -163,6 +163,18 @@ export default function WebViewerComponent({
     const id = "wv-readonly-css";
     const el = document.getElementById(id);
     if (el) el.remove();
+
+    // Also clean up any inline styles
+    setTimeout(() => {
+      ["toolsHeader", "ribbons", "header"].forEach((className) => {
+        const element = document.querySelector(`.${className}`) as HTMLElement;
+        if (element) {
+          element.style.display = "";
+          element.style.visibility = "";
+          element.style.opacity = "";
+        }
+      });
+    }, 500);
   };
 
   // Clear leftover loading overlays
@@ -218,26 +230,27 @@ export default function WebViewerComponent({
 
     let instance: any = null;
 
-    const readOnlyDisableList = [
-      "leftPanel",
-      "notesPanel",
-      "searchButton",
-      "menuButton",
-      "toggleNotesButton",
-      "toolsHeader",
-      "header",
-      "ribbons",
-      "toolbarGroup-Annotate",
-      "toolbarGroup-Edit",
-      "toolbarGroup-Insert",
-      "toolbarGroup-View",
-      "toolbarGroup-Share",
-      "annotationPopup",
-      "stylePopup",
-      "richTextPopup",
-    ];
-
-    const editableDisableList: string[] = [];
+    // Define disabled elements based on permissions
+    const disabledElements = !canAnnotate
+      ? [
+          "leftPanel",
+          "notesPanel",
+          "searchButton",
+          "menuButton",
+          "toggleNotesButton",
+          "toolsHeader",
+          "header",
+          "ribbons",
+          "toolbarGroup-Annotate",
+          "toolbarGroup-Edit",
+          "toolbarGroup-Insert",
+          "toolbarGroup-View",
+          "toolbarGroup-Share",
+          "annotationPopup",
+          "stylePopup",
+          "richTextPopup",
+        ]
+      : []; // Empty array for users who can annotate
 
     if (!canAnnotate) injectReadOnlyCss();
 
@@ -247,13 +260,16 @@ export default function WebViewerComponent({
         initialDoc: documentUrl,
         licenseKey:
           "demo:1757509875851:604eca4e0300000000877d781419f71633c68ea80c20ad3325f5806b42",
-        disabledElements: !canAnnotate
-          ? readOnlyDisableList
-          : editableDisableList,
+        disabledElements: disabledElements,
         enableAnnotationTools: canAnnotate,
         enableFilePicker: false,
         enableMeasurement: canAnnotate,
         enableRedaction: canAnnotate,
+        // Add these for better toolbar control
+        fullAPI: true,
+        css: canAnnotate
+          ? ""
+          : ".ToolsHeader, .ribbons { display: none !important; }",
       },
       viewer.current
     )
@@ -262,67 +278,10 @@ export default function WebViewerComponent({
         instanceRef.current = instance;
         const { UI, Core } = instance;
 
-        // Enable/disable toolbar based on permissions
+        // SIMPLIFIED: Let WebViewer handle toolbar based on disabledElements
         if (canAnnotate) {
-          try {
-            removeReadOnlyCss();
-            const allElements = [
-              "header",
-              "toolsHeader",
-              "ribbons",
-              "toolbarGroup-Annotate",
-              "toolbarGroup-Edit",
-              "toolbarGroup-Insert",
-              "toolbarGroup-View",
-              "toolbarGroup-Share",
-              "toolbarGroup-Forms",
-              "toolbarGroup-FillAndSign",
-              "toolbarGroup-Measure",
-              "leftPanel",
-              "notesPanel",
-              "searchButton",
-              "menuButton",
-              "toggleNotesButton",
-              "annotationPopup",
-              "stylePopup",
-            ];
-
-            UI.enableElements(allElements);
-
-            if (typeof UI.openElements === "function") {
-              UI.openElements(["ribbons", "toolsHeader"]);
-            }
-
-            UI.setToolbarGroup("toolbarGroup-Annotate");
-
-            const dv = resolveDocumentViewer(Core);
-            const am = resolveAnnotationManager(Core, dv);
-            if (am) {
-              if (typeof am.enableReadOnlyMode === "function") {
-                am.enableReadOnlyMode(false);
-              } else if (typeof am.setReadOnly === "function") {
-                am.setReadOnly(false);
-              }
-            }
-
-            UI.setReadOnlyMode(false);
-
-            setTimeout(() => {
-              const ribbons =
-                document.querySelectorAll<HTMLElement>(".ribbons");
-              ribbons.forEach((r) => {
-                r.style.display = "flex";
-                r.style.visibility = "visible";
-                r.style.opacity = "1";
-              });
-            }, 300);
-
-            console.log("✅ Full annotation toolbar enabled for assigned user");
-          } catch (e) {
-            console.error("Failed to enable full toolbar:", e);
-          }
-        } else {
-          addToast("Read-only mode: You are not the assigned reviewer", 3000);
+          removeReadOnlyCss();
+          console.log("✅ Annotation tools enabled for assigned user");
         }
 
         const documentViewer = resolveDocumentViewer(Core);
@@ -338,6 +297,7 @@ export default function WebViewerComponent({
             const dv = resolveDocumentViewer(Core);
             const annotationManager = resolveAnnotationManager(Core, dv);
 
+            // Final permission setup after document loads
             if (!canAnnotate && annotationManager) {
               try {
                 if (
@@ -348,11 +308,40 @@ export default function WebViewerComponent({
                   typeof annotationManager.setReadOnly === "function"
                 ) {
                   annotationManager.setReadOnly(true);
-                } else if (UI && typeof UI.setReadOnlyMode === "function") {
-                  UI.setReadOnlyMode(true);
                 }
+                // Don't call UI.setReadOnlyMode - let disabledElements handle it
               } catch (e) {
                 console.warn("Failed to apply readOnly on load:", e);
+              }
+            } else if (canAnnotate) {
+              // Ensure annotation tools are fully enabled for assigned users
+              try {
+                // Use minimal, safe approach
+                if (typeof UI.setToolbarGroup === "function") {
+                  UI.setToolbarGroup("toolbarGroup-Annotate");
+                }
+
+                // Force show tools header and ribbons with CSS
+                setTimeout(() => {
+                  const toolsHeader = document.querySelector(
+                    ".ToolsHeader"
+                  ) as HTMLElement;
+                  const ribbons = document.querySelector(
+                    ".ribbons"
+                  ) as HTMLElement;
+                  if (toolsHeader) {
+                    toolsHeader.style.display = "flex";
+                    toolsHeader.style.visibility = "visible";
+                    toolsHeader.style.opacity = "1";
+                  }
+                  if (ribbons) {
+                    ribbons.style.display = "flex";
+                    ribbons.style.visibility = "visible";
+                    ribbons.style.opacity = "1";
+                  }
+                }, 1000);
+              } catch (e) {
+                console.warn("Toolbar finalization error:", e);
               }
             }
 
@@ -966,6 +955,33 @@ export default function WebViewerComponent({
       }
     } catch {}
     return {};
+  };
+
+  const handleExport = async () => {
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) return;
+    try {
+      const Core = inst.Core;
+      const dv = resolveDocumentViewer(Core);
+      const am = resolveAnnotationManager(Core, dv);
+      if (!dv || !am) return console.error("viewer/export not ready");
+      const doc = dv.getDocument?.();
+      const xfdfString = await am.exportAnnotations();
+      const data = await doc.getFileData({ xfdfString, flatten: true });
+      const blob = new Blob([data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `annotated-document-${documentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      // Persist XFDF to server after export so the flattened PDF & the server store match
+      await persistXfdf(am);
+    } catch (e) {
+      console.error("handleExport error", e);
+    }
   };
 
   return (

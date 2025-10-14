@@ -30,15 +30,27 @@ export function Sidebar() {
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: Home, route: "/dashboard" },
-    { id: "documents", label: "Documents", icon: FileText, route: "/documents" },
+    {
+      id: "documents",
+      label: "Documents",
+      icon: FileText,
+      route: "/documents",
+    },
     { id: "users", label: "Users", icon: Users, route: "/users" },
-    { id: "departments", label: "Departments", icon: Building2, route: "/departments" },
-    { id: "notifications", label: "Notifications", icon: Bell, route: "/notifications" },
-    { id: "activity", label: "Activity Log", icon: Activity, route: "/activity" },
+    // { id: "departments", label: "Departments", icon: Building2, route: "/departments" },
+    {
+      id: "notifications",
+      label: "Notifications",
+      icon: Bell,
+      route: "/notifications",
+    },
+    // { id: "activity", label: "Activity Log", icon: Activity, route: "/activity" },
     { id: "settings", label: "Settings", icon: Settings, route: "/settings" },
   ];
 
-  const activeView = menuItems.find((item) => pathname?.startsWith(item.route))?.id ?? "dashboard";
+  const activeView =
+    menuItems.find((item) => pathname?.startsWith(item.route))?.id ??
+    "dashboard";
 
   return (
     // fixed on md+; on small screens keep positioned relative so it can be used as a top bar or off-canvas
@@ -55,7 +67,9 @@ export function Sidebar() {
       style={{ minWidth: isCollapsed ? 64 : 256 }}
     >
       <div className="flex items-center justify-between p-4 border-b">
-        {!isCollapsed && <h1 className="text-xl font-bold text-gray-900">DocuFlow</h1>}
+        {!isCollapsed && (
+          <h1 className="text-xl font-bold text-gray-900">DocuFlow</h1>
+        )}
         <Button variant="ghost" size="sm" onClick={toggle}>
           {isCollapsed ? <Menu size={16} /> : <X size={16} />}
         </Button>
@@ -78,7 +92,9 @@ export function Sidebar() {
                 variant={activeView === item.id ? "default" : "ghost"}
                 className={cn(
                   "w-full justify-start transition-all duration-200",
-                  activeView === item.id ? "bg-primary text-white shadow-sm" : "hover:bg-primary/10 hover:text-primary",
+                  activeView === item.id
+                    ? "bg-primary text-white shadow-sm"
+                    : "hover:bg-primary/10 hover:text-primary",
                   isCollapsed ? "px-2" : "px-3"
                 )}
                 onClick={() => router.push(item.route)}
@@ -92,7 +108,17 @@ export function Sidebar() {
       </ScrollArea>
 
       <div className="p-4 border-t">
-        <Button variant="ghost" className={cn("w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50", isCollapsed ? "px-2" : "px-3")} onClick={async () => { await signOut(); router.push("/"); }}>
+        <Button
+          variant="ghost"
+          className={cn(
+            "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50",
+            isCollapsed ? "px-2" : "px-3"
+          )}
+          onClick={async () => {
+            await signOut();
+            router.push("/");
+          }}
+        >
           <LogOut size={16} />
           {!isCollapsed && <span className="ml-2">Sign Out</span>}
         </Button>

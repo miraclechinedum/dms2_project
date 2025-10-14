@@ -178,6 +178,57 @@ export async function POST(request: NextRequest) {
       await DatabaseService.query(assignmentSql, assignmentParams);
       console.log("✅ Assignment row inserted:", assignmentId);
 
+      // Create notification for the assigned user if they are not the uploader
+      if (assignedToUser && assignedToUser !== userId) {
+        try {
+          const notificationId = randomUUID();
+
+          // Get uploader's name for the notification message
+          const uploaderResult = await DatabaseService.query(
+            "SELECT name FROM users WHERE id = ?",
+            [userId]
+          );
+
+          let uploaderName = "A user";
+          if (Array.isArray(uploaderResult)) {
+            const rows = Array.isArray(uploaderResult[0])
+              ? uploaderResult[0]
+              : uploaderResult;
+            uploaderName = rows[0]?.name || "A user";
+          }
+
+          const notificationMessage = `${uploaderName} assigned you the document "${title}"`;
+
+          const notificationSql = `
+            INSERT INTO notifications 
+            (id, user_id, type, message, related_document_id, sender_id, is_read, created_at)
+            VALUES (?, ?, 'document_assigned', ?, ?, ?, 0, NOW())
+          `;
+
+          await DatabaseService.query(notificationSql, [
+            notificationId,
+            assignedToUser,
+            notificationMessage,
+            documentId,
+            userId,
+          ]);
+
+          console.log(
+            "✅ Notification created for assigned user:",
+            assignedToUser
+          );
+          console.log("📧 Notification message:", notificationMessage);
+        } catch (notifyErr) {
+          // Don't fail the upload if notification fails
+          console.error("❌ Failed to create notification:", notifyErr);
+          logDbError("Notification creation error:", notifyErr);
+        }
+      } else {
+        console.log(
+          "ℹ️ No notification needed - document assigned to uploader"
+        );
+      }
+
       // Success response: return assignment metadata
       return NextResponse.json(
         {
