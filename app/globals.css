@@ -142,3 +142,8 @@ body,
 [data-state="open"] {
   animation: fade-in-down 180ms ease-out;
 }
+
+[data-vaul-drawer][data-vaul-drawer-direction="bottom"]::after {
+  border: 3px solid red;
+  height: auto;
+}

@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   Home,
+  Shield,
   Building2,
   Activity,
 } from "lucide-react";
@@ -37,14 +38,30 @@ export function Sidebar() {
       route: "/documents",
     },
     { id: "users", label: "Users", icon: Users, route: "/users" },
-    // { id: "departments", label: "Departments", icon: Building2, route: "/departments" },
+    {
+      id: "departments",
+      label: "Departments",
+      icon: Building2,
+      route: "/departments",
+    },
+    {
+      id: "roles",
+      label: "Roles & Permissions",
+      icon: Shield,
+      route: "/roles",
+    },
     {
       id: "notifications",
       label: "Notifications",
       icon: Bell,
       route: "/notifications",
     },
-    // { id: "activity", label: "Activity Log", icon: Activity, route: "/activity" },
+    {
+      id: "activity",
+      label: "Activity Log",
+      icon: Activity,
+      route: "/activity",
+    },
     { id: "settings", label: "Settings", icon: Settings, route: "/settings" },
   ];
 

@@ -64,11 +64,11 @@ export function DepartmentFormDrawer({
     setIsLoading(true);
 
     try {
-      const url = isEditing 
+      const url = isEditing
         ? `/api/departments/${department.id}`
-        : '/api/departments';
-      
-      const method = isEditing ? 'PUT' : 'POST';
+        : "/api/departments";
+
+      const method = isEditing ? "PUT" : "POST";
 
       const response = await fetch(url, {
         method,
@@ -81,17 +81,27 @@ export function DepartmentFormDrawer({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to ${isEditing ? 'update' : 'create'} department`);
+        throw new Error(
+          errorData.error ||
+            `Failed to ${isEditing ? "update" : "create"} department`
+        );
       }
 
-      toast.success(`Department ${isEditing ? 'updated' : 'created'} successfully!`);
+      toast.success(
+        `Department ${isEditing ? "updated" : "created"} successfully!`
+      );
       resetForm();
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error(`${isEditing ? 'Update' : 'Create'} department error:`, error);
+      console.error(
+        `${isEditing ? "Update" : "Create"} department error:`,
+        error
+      );
       toast.error(
-        error instanceof Error ? error.message : `Failed to ${isEditing ? 'update' : 'create'} department`
+        error instanceof Error
+          ? error.message
+          : `Failed to ${isEditing ? "update" : "create"} department`
       );
     } finally {
       setIsLoading(false);
@@ -104,13 +114,12 @@ export function DepartmentFormDrawer({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-primary" />
-            {isEditing ? 'Edit Department' : 'Add New Department'}
+            {isEditing ? "Edit Department" : "Add New Department"}
           </SheetTitle>
           <SheetDescription>
-            {isEditing 
-              ? 'Update the department information below.'
-              : 'Create a new department by filling out the form below.'
-            }
+            {isEditing
+              ? "Update the department information below."
+              : "Create a new department by filling out the form below."}
           </SheetDescription>
         </SheetHeader>
 
@@ -128,7 +137,7 @@ export function DepartmentFormDrawer({
               />
             </div>
 
-            <div>
+            {/* <div>
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
@@ -138,7 +147,7 @@ export function DepartmentFormDrawer({
                 rows={4}
                 className="focus:ring-primary focus:border-primary"
               />
-            </div>
+            </div> */}
           </div>
 
           <div className="flex gap-3 pt-4">
@@ -148,10 +157,13 @@ export function DepartmentFormDrawer({
               className="flex-1 bg-primary hover:bg-primary/90"
             >
               <Save className="h-4 w-4 mr-2" />
-              {isLoading 
-                ? (isEditing ? "Updating..." : "Creating...") 
-                : (isEditing ? "Update Department" : "Create Department")
-              }
+              {isLoading
+                ? isEditing
+                  ? "Updating..."
+                  : "Creating..."
+                : isEditing
+                ? "Update Department"
+                : "Create Department"}
             </Button>
             <Button
               variant="outline"

@@ -1,6 +1,7 @@
 // app/api/auth/signin/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { DatabaseService } from "@/lib/database";
+import { AuthService } from "@/lib/auth";
 
 // Simple JWT implementation using crypto
 function signJWT(payload: any, secret: string, expiresIn: string = "7d") {
@@ -43,12 +44,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user by email - REMOVED role from SELECT
+    // Find user by email with role information
     console.log("Querying database for user...");
     let users;
     try {
       users = (await DatabaseService.query(
-        "SELECT id, name, email, password_hash, department_id, created_at FROM users WHERE email = ?",
+        `SELECT 
+          u.id, 
+          u.name, 
+          u.email, 
+          u.password_hash, 
+          u.department_id, 
+          u.role_id,
+          r.name as role_name,
+          u.created_at 
+        FROM users u 
+        LEFT JOIN roles r ON u.role_id = r.id 
+        WHERE u.email = ?`,
         [email.toLowerCase().trim()]
       )) as any[];
       console.log("Database query successful, found users:", users?.length);
@@ -69,6 +81,8 @@ export async function POST(request: NextRequest) {
     console.log("User found:", {
       id: user.id,
       email: user.email,
+      role: user.role_name,
+      role_id: user.role_id,
       hasPasswordHash: !!user.password_hash,
     });
 
@@ -95,14 +109,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate token - Using a default role since your table doesn't have role column
+    // Generate token with role information
     console.log("Generating JWT token...");
     const token = signJWT(
       {
         userId: user.id,
         email: user.email,
         name: user.name,
-        role: "user", // Default role since your table doesn't have role column
+        role: user.role_name || "user", // Use actual role from database or default to "user"
+        roleId: user.role_id,
         departmentId: user.department_id,
       },
       process.env.JWT_SECRET || "fallback-secret-change-in-production"
@@ -113,7 +128,8 @@ export async function POST(request: NextRequest) {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: "user", // Default role
+        role: user.role_name || "user", // Use actual role from database
+        roleId: user.role_id,
         departmentId: user.department_id,
       },
       message: "Signed in successfully",

@@ -1,11 +1,9 @@
+// app/roles/page.tsx
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { Header } from "@/components/layout/header";
-import { Sidebar } from "@/components/layout/sidebar";
-import { DepartmentFormDrawer } from "@/components/departments/department-form-drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,41 +22,41 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Building2,
   Search,
   Plus,
   Edit,
+  Shield,
   Users,
+  Key,
   ArrowUpDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "react-hot-toast";
 import { Toaster } from "react-hot-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RoleFormDrawer } from "@/components/roles/role-form-drawer";
 
-interface Department {
+interface Role {
   id: string;
   name: string;
   description?: string;
+  permission_count: number;
+  user_count: number;
   created_at: string;
-  user_count?: number;
-  created_by?: string;
 }
 
-export default function DepartmentsPage() {
-  const [departments, setDepartments] = useState<Department[]>([]);
+export default function RolesPage() {
+  const [roles, setRoles] = useState<Role[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [formDrawerOpen, setFormDrawerOpen] = useState(false);
-  const [editingDepartment, setEditingDepartment] = useState<Department | null>(
-    null
-  );
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   const [sortConfig, setSortConfig] = useState<{
-    key: keyof Department;
+    key: keyof Role;
     direction: "asc" | "desc";
   } | null>(null);
 
@@ -70,27 +68,27 @@ export default function DepartmentsPage() {
       router.push("/");
       return;
     }
-    fetchDepartments();
+    fetchRoles();
   }, [user, router]);
 
-  const fetchDepartments = async () => {
+  const fetchRoles = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/departments");
-      if (!response.ok) throw new Error("Failed to fetch");
+      const response = await fetch("/api/roles");
+      if (!response.ok) throw new Error("Failed to fetch roles");
 
-      const { departments } = await response.json();
-      setDepartments(departments ?? []);
+      const { roles } = await response.json();
+      setRoles(roles ?? []);
     } catch (error) {
-      console.error("Error fetching departments:", error);
-      toast.error("Could not load departments");
+      console.error("Error fetching roles:", error);
+      toast.error("Could not load roles");
     } finally {
       setLoading(false);
     }
   };
 
-  const sortedDepartments = useMemo(() => {
-    let sortable = [...departments];
+  const sortedRoles = useMemo(() => {
+    let sortable = [...roles];
     if (sortConfig) {
       sortable.sort((a, b) => {
         const aValue = a[sortConfig.key];
@@ -104,24 +102,24 @@ export default function DepartmentsPage() {
       });
     }
     return sortable;
-  }, [departments, sortConfig]);
+  }, [roles, sortConfig]);
 
-  const filteredDepartments = useMemo(() => {
-    return sortedDepartments.filter(
-      (dept) =>
-        dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        dept.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredRoles = useMemo(() => {
+    return sortedRoles.filter(
+      (role) =>
+        role.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        role.description?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [sortedDepartments, searchTerm]);
+  }, [sortedRoles, searchTerm]);
 
-  const totalPages = Math.ceil(filteredDepartments.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredRoles.length / itemsPerPage);
 
-  const paginatedDepartments = filteredDepartments.slice(
+  const paginatedRoles = filteredRoles.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  const handleSort = (key: keyof Department) => {
+  const handleSort = (key: keyof Role) => {
     let direction: "asc" | "desc" = "asc";
     if (sortConfig?.key === key && sortConfig.direction === "asc") {
       direction = "desc";
@@ -129,18 +127,19 @@ export default function DepartmentsPage() {
     setSortConfig({ key, direction });
   };
 
-  const handleAddDepartment = () => {
-    setEditingDepartment(null);
+  const handleAddRole = () => {
+    setEditingRole(null);
     setFormDrawerOpen(true);
   };
 
-  const handleEditDepartment = (department: Department) => {
-    setEditingDepartment(department);
+  const handleEditRole = (role: Role) => {
+    setEditingRole(role);
     setFormDrawerOpen(true);
   };
 
   const handleFormSuccess = () => {
-    fetchDepartments();
+    fetchRoles();
+    setFormDrawerOpen(false);
   };
 
   return (
@@ -152,19 +151,15 @@ export default function DepartmentsPage() {
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-3xl font-bold text-gray-900">
-                    Departments
-                  </h2>
-                  <p className="text-gray-600">
-                    Manage organizational departments
-                  </p>
+                  <h2 className="text-3xl font-bold text-gray-900">Roles</h2>
+                  <p className="text-gray-600">Manage user roles</p>
                 </div>
                 <Button
-                  onClick={handleAddDepartment}
+                  onClick={handleAddRole}
                   className="bg-primary hover:bg-primary/90"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Department
+                  Add Role
                 </Button>
               </div>
 
@@ -174,7 +169,7 @@ export default function DepartmentsPage() {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
-                      placeholder="Search departments..."
+                      placeholder="Search roles..."
                       value={searchTerm}
                       onChange={(e) => {
                         setSearchTerm(e.target.value);
@@ -186,16 +181,14 @@ export default function DepartmentsPage() {
                 </CardContent>
               </Card>
 
-              {/* Departments Table */}
+              {/* Roles Table */}
               <Card className="shadow-sm">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-primary" />
-                    Departments ({filteredDepartments.length})
+                    <Shield className="h-5 w-5 text-primary" />
+                    Roles ({filteredRoles.length})
                   </CardTitle>
-                  <CardDescription>
-                    List of all organizational departments
-                  </CardDescription>
+                  <CardDescription>List of all system roles</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {loading ? (
@@ -206,25 +199,25 @@ export default function DepartmentsPage() {
                           <Skeleton className="h-5 w-40" />
                           <Skeleton className="h-5 w-60" />
                           <Skeleton className="h-5 w-20" />
-                          <Skeleton className="h-5 w-28" />
+                          <Skeleton className="h-5 w-20" />
                           <Skeleton className="h-5 w-28" />
                           <Skeleton className="h-8 w-16" />
                         </div>
                       ))}
                     </div>
-                  ) : filteredDepartments.length === 0 ? (
+                  ) : filteredRoles.length === 0 ? (
                     <div className="text-center py-12">
-                      <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-600">No departments found</p>
+                      <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600">No roles found</p>
                       <p className="text-sm text-gray-500 mb-4">
-                        Create your first department to get started
+                        Create your first role to get started
                       </p>
                       <Button
-                        onClick={handleAddDepartment}
+                        onClick={handleAddRole}
                         className="bg-primary hover:bg-primary/90"
                       >
                         <Plus className="h-4 w-4 mr-2" />
-                        Add Department
+                        Add Role
                       </Button>
                     </div>
                   ) : (
@@ -237,12 +230,10 @@ export default function DepartmentsPage() {
                               onClick={() => handleSort("name")}
                               className="cursor-pointer"
                             >
-                              Department{" "}
+                              Role Name{" "}
                               <ArrowUpDown className="inline h-3 w-3 ml-1" />
                             </TableHead>
-                            {/* <TableHead>Description</TableHead> */}
-                            <TableHead>People Count</TableHead>
-                            <TableHead>Created By</TableHead>
+                            {/* <TableHead>Permissions</TableHead> */}
                             <TableHead
                               onClick={() => handleSort("created_at")}
                               className="cursor-pointer"
@@ -254,9 +245,9 @@ export default function DepartmentsPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {paginatedDepartments.map((department, index) => (
+                          {paginatedRoles.map((role, index) => (
                             <TableRow
-                              key={department.id}
+                              key={role.id}
                               className="hover:bg-gray-50 transition-colors"
                             >
                               <TableCell className="font-medium">
@@ -264,31 +255,21 @@ export default function DepartmentsPage() {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <Building2 className="h-4 w-4 text-primary" />
+                                  <Shield className="h-4 w-4 text-primary" />
                                   <span className="font-medium">
-                                    {department.name}
+                                    {role.name}
                                   </span>
                                 </div>
                               </TableCell>
                               {/* <TableCell>
-                                <span className="text-gray-600">
-                                  {department.description || "-"}
-                                </span>
+                                <div className="flex items-center gap-1">
+                                  <Key className="h-4 w-4 text-gray-400" />
+                                  <span>{role.permission_count}</span>
+                                </div>
                               </TableCell> */}
                               <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <Users className="h-4 w-4 text-gray-400" />
-                                  <span>{department.user_count || 0}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <span className="text-gray-600">
-                                  {department.created_by ?? "System"}
-                                </span>
-                              </TableCell>
-                              <TableCell>
                                 {format(
-                                  new Date(department.created_at),
+                                  new Date(role.created_at),
                                   "MMM dd, yyyy"
                                 )}
                               </TableCell>
@@ -296,9 +277,7 @@ export default function DepartmentsPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() =>
-                                    handleEditDepartment(department)
-                                  }
+                                  onClick={() => handleEditRole(role)}
                                   className="hover:bg-primary/10 hover:border-primary hover:text-primary"
                                 >
                                   <Edit className="h-4 w-4" />
@@ -312,7 +291,7 @@ export default function DepartmentsPage() {
                   )}
 
                   {/* Pagination */}
-                  {!loading && filteredDepartments.length > 0 && (
+                  {!loading && filteredRoles.length > 0 && (
                     <div className="flex justify-between items-center mt-4">
                       <p className="text-sm text-gray-600">
                         Page {currentPage} of {totalPages}
@@ -344,11 +323,11 @@ export default function DepartmentsPage() {
         </div>
       </div>
 
-      <DepartmentFormDrawer
+      <RoleFormDrawer
         open={formDrawerOpen}
         onOpenChange={setFormDrawerOpen}
         onSuccess={handleFormSuccess}
-        department={editingDepartment}
+        role={editingRole}
       />
       <Toaster position="top-right" />
     </div>
