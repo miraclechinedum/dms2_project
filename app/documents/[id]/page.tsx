@@ -16,6 +16,7 @@ import {
   StickyNote,
   Search,
   Check,
+  Download,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { cn } from "@/lib/utils";
@@ -129,6 +130,7 @@ export default function DocumentViewerPage() {
 
   const [assignOpen, setAssignOpen] = useState(false);
   const assignBtnRef = useRef<HTMLButtonElement | null>(null);
+  const webViewerRef = useRef<any>(null);
 
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
@@ -136,16 +138,33 @@ export default function DocumentViewerPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assignSubmitting, setAssignSubmitting] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [jumpPageInput, setJumpPageInput] = useState("");
   const perPage = 5;
 
-  // Permission: Only assigned user can annotate
-  const isAssignedUser =
-    currentUser &&
-    document?.assigned_to_user &&
-    String(currentUser.id) === String(document.assigned_to_user);
+  // Permission: Check assignment history to determine if current user can annotate
+  const isAssignedUser = (() => {
+    if (!currentUser || !assignmentHistory.length) return false;
+
+    // Get the most recent assignment
+    const latestAssignment = assignmentHistory[0];
+    console.log("🔍 [DEBUG] Latest assignment:", latestAssignment);
+
+    const result =
+      latestAssignment.assigned_to &&
+      String(currentUser.id) === String(latestAssignment.assigned_to);
+
+    console.log("🔍 [DEBUG] isAssignedUser calculation:", {
+      currentUserId: currentUser.id,
+      assignedTo: latestAssignment.assigned_to,
+      assignedToName: latestAssignment.assigned_to_name,
+      result,
+    });
+
+    return result;
+  })();
 
   // Debug logging
   useEffect(() => {
@@ -153,13 +172,14 @@ export default function DocumentViewerPage() {
       console.log("🔍 [DEBUG] Assignment Check:");
       console.log("Current user ID:", currentUser.id, typeof currentUser.id);
       console.log(
-        "Document assigned to:",
+        "Document assigned_to_user:",
         document.assigned_to_user,
         typeof document.assigned_to_user
       );
+      console.log("Assignment history count:", assignmentHistory.length);
       console.log("isAssignedUser result:", isAssignedUser);
     }
-  }, [document, currentUser, isAssignedUser]);
+  }, [document, currentUser, isAssignedUser, assignmentHistory]);
 
   // Fetch document metadata
   useEffect(() => {
@@ -297,6 +317,48 @@ export default function DocumentViewerPage() {
 
   const handleAnnotationDelete = (annotationId: string) => {
     setAnnotations((prev) => prev.filter((a) => a.id !== annotationId));
+  };
+
+  // Export document with annotations
+  // Replace the existing handleExport function with this:
+  // Replace the existing handleExport function with this:
+  const handleExport = async () => {
+    if (!document) return;
+
+    setExporting(true);
+    try {
+      console.log("📤 Starting document export...");
+
+      if (webViewerRef.current && webViewerRef.current.exportDocument) {
+        // Use the WebViewer's export function
+        await webViewerRef.current.exportDocument();
+        toast.success("Document exported with annotations!");
+      } else {
+        // Fallback: Download the original document
+        console.warn(
+          "WebViewer export not available, falling back to original download"
+        );
+        const link = document.createElement("a");
+        link.href = document.file_url || document.file_path;
+        link.download = `document-${document.title}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success(
+          "Original document downloaded (annotations not included)"
+        );
+      }
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error("Failed to export document");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Register WebViewer handlers
+  const registerWebViewerHandlers = (handlers: any) => {
+    webViewerRef.current = handlers;
   };
 
   // Load users for assignment dropdown
@@ -481,6 +543,18 @@ export default function DocumentViewerPage() {
             </div>
 
             <div className="flex items-center space-x-2 relative">
+              {/* Export Button - Always visible */}
+              <Button
+                onClick={handleExport}
+                disabled={exporting}
+                variant="outline"
+                className="flex items-center gap-2 border-green-600 text-green-600 hover:bg-green-600 hover:text-white transition-colors"
+                title="Export document with annotations"
+              >
+                <Download className="h-4 w-4" />
+                {exporting ? "Exporting..." : "Export"}
+              </Button>
+
               {/* Notify / Assign button - Only shown to assigned user */}
               {isAssignedUser && (
                 <>
@@ -622,12 +696,13 @@ export default function DocumentViewerPage() {
               )}
 
               {/* Status badge for non-assigned users */}
-              {!isAssignedUser && document.assigned_user_name && (
+              {!isAssignedUser && assignmentHistory.length > 0 && (
                 <Badge
                   variant="secondary"
                   className="bg-yellow-100 text-yellow-800"
                 >
-                  Assigned to: {document.assigned_user_name}
+                  Assigned to:{" "}
+                  {assignmentHistory[0].assigned_to_name || "Unknown"}
                 </Badge>
               )}
             </div>
@@ -643,7 +718,11 @@ export default function DocumentViewerPage() {
                   documentId={document.id}
                   currentUserId={currentUser.id}
                   currentUserName={currentUser.name || currentUser.email}
-                  assignedToUserId={document.assigned_to_user}
+                  assignedToUserId={
+                    assignmentHistory.length > 0
+                      ? assignmentHistory[0].assigned_to
+                      : null
+                  }
                   onAnnotationSave={
                     isAssignedUser ? handleAnnotationSave : undefined
                   }
@@ -651,6 +730,7 @@ export default function DocumentViewerPage() {
                     isAssignedUser ? handleAnnotationDelete : undefined
                   }
                   existingAnnotations={annotations}
+                  registerHandlers={registerWebViewerHandlers}
                 />
               )}
             </div>
@@ -666,16 +746,20 @@ export default function DocumentViewerPage() {
                   <div>
                     <span className="font-medium">Assignment Status:</span>
                     <span className="ml-2 text-xs text-gray-600">
-                      {document.assigned_user_name
-                        ? `Assigned to ${document.assigned_user_name}`
+                      {assignmentHistory.length > 0
+                        ? `Assigned to ${
+                            assignmentHistory[0].assigned_to_name || "Unknown"
+                          }`
                         : "Not assigned"}
                     </span>
                   </div>
-                  {!isAssignedUser && document.assigned_user_name && (
+                  {!isAssignedUser && assignmentHistory.length > 0 && (
                     <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
                       <p className="text-xs text-yellow-800">
-                        ⚠️ Only {document.assigned_user_name} can annotate this
-                        document
+                        ⚠️ Only{" "}
+                        {assignmentHistory[0].assigned_to_name ||
+                          "the assigned user"}{" "}
+                        can annotate this document
                       </p>
                     </div>
                   )}

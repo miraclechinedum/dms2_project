@@ -147,3 +147,28 @@ body,
   border: 3px solid red;
   height: auto;
 }
+
+/* Prevent WebViewer duplication */
+.webviewer-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.webviewer-container > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Hide duplicate toolbars */
+.ToolsHeader:not(:first-child),
+.ribbons:not(:first-child),
+.Header:not(:first-child) {
+  display: none !important;
+}
+
+/* Ensure single document view */
+.DocumentContainer {
+  width: 100% !important;
+  height: 100% !important;
+}

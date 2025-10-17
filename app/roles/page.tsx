@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -29,6 +30,7 @@ import {
   Users,
   Key,
   ArrowUpDown,
+  Building2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "react-hot-toast";
@@ -40,6 +42,8 @@ interface Role {
   id: string;
   name: string;
   description?: string;
+  department_id?: string;
+  department_name?: string;
   permission_count: number;
   user_count: number;
   created_at: string;
@@ -96,6 +100,16 @@ export default function RolesPage() {
 
         if (aValue === undefined || bValue === undefined) return 0;
 
+        // Handle department_name sorting
+        if (sortConfig.key === "department_name") {
+          const aDept = a.department_name || "";
+          const bDept = b.department_name || "";
+          if (aDept < bDept) return sortConfig.direction === "asc" ? -1 : 1;
+          if (aDept > bDept) return sortConfig.direction === "asc" ? 1 : -1;
+          return 0;
+        }
+
+        // Handle other fields
         if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
         if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
         return 0;
@@ -108,7 +122,8 @@ export default function RolesPage() {
     return sortedRoles.filter(
       (role) =>
         role.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        role.description?.toLowerCase().includes(searchTerm.toLowerCase())
+        role.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        role.department_name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [sortedRoles, searchTerm]);
 
@@ -142,6 +157,22 @@ export default function RolesPage() {
     setFormDrawerOpen(false);
   };
 
+  // Small page number rendering (show up to 5)
+  const getPageNumbers = () => {
+    const maxButtons = 5;
+    const pages: number[] = [];
+    let start = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+    let end = start + maxButtons - 1;
+
+    if (end > totalPages) {
+      end = totalPages;
+      start = Math.max(1, end - maxButtons + 1);
+    }
+
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
@@ -151,8 +182,12 @@ export default function RolesPage() {
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-3xl font-bold text-gray-900">Roles</h2>
-                  <p className="text-gray-600">Manage user roles</p>
+                  <h2 className="text-3xl font-bold text-gray-900">
+                    Roles & Permissions
+                  </h2>
+                  <p className="text-gray-600">
+                    Manage user roles and their permissions
+                  </p>
                 </div>
                 <Button
                   onClick={handleAddRole}
@@ -188,7 +223,10 @@ export default function RolesPage() {
                     <Shield className="h-5 w-5 text-primary" />
                     Roles ({filteredRoles.length})
                   </CardTitle>
-                  <CardDescription>List of all system roles</CardDescription>
+                  <CardDescription>
+                    List of all system roles with their departments and
+                    permissions
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {loading ? (
@@ -198,7 +236,7 @@ export default function RolesPage() {
                           <Skeleton className="h-5 w-10" />
                           <Skeleton className="h-5 w-40" />
                           <Skeleton className="h-5 w-60" />
-                          <Skeleton className="h-5 w-20" />
+                          <Skeleton className="h-5 w-32" />
                           <Skeleton className="h-5 w-20" />
                           <Skeleton className="h-5 w-28" />
                           <Skeleton className="h-8 w-16" />
@@ -233,7 +271,15 @@ export default function RolesPage() {
                               Role Name{" "}
                               <ArrowUpDown className="inline h-3 w-3 ml-1" />
                             </TableHead>
-                            {/* <TableHead>Permissions</TableHead> */}
+                            <TableHead
+                              onClick={() => handleSort("department_name")}
+                              className="cursor-pointer"
+                            >
+                              Department{" "}
+                              <ArrowUpDown className="inline h-3 w-3 ml-1" />
+                            </TableHead>
+                            <TableHead>Permissions</TableHead>
+                            <TableHead>Users</TableHead>
                             <TableHead
                               onClick={() => handleSort("created_at")}
                               className="cursor-pointer"
@@ -256,17 +302,43 @@ export default function RolesPage() {
                               <TableCell>
                                 <div className="flex items-center gap-2">
                                   <Shield className="h-4 w-4 text-primary" />
-                                  <span className="font-medium">
-                                    {role.name}
-                                  </span>
+                                  <div>
+                                    <span className="font-medium">
+                                      {role.name}
+                                    </span>
+                                    {role.description && (
+                                      <p className="text-xs text-gray-500">
+                                        {role.description}
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
                               </TableCell>
-                              {/* <TableCell>
+                              <TableCell>
+                                {role.department_name ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="flex items-center gap-1 w-fit"
+                                  >
+                                    <Building2 className="h-3 w-3" />
+                                    {role.department_name}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
                                 <div className="flex items-center gap-1">
                                   <Key className="h-4 w-4 text-gray-400" />
                                   <span>{role.permission_count}</span>
                                 </div>
-                              </TableCell> */}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <Users className="h-4 w-4 text-gray-400" />
+                                  <span>{role.user_count}</span>
+                                </div>
+                              </TableCell>
                               <TableCell>
                                 {format(
                                   new Date(role.created_at),
@@ -287,33 +359,64 @@ export default function RolesPage() {
                           ))}
                         </TableBody>
                       </Table>
-                    </div>
-                  )}
 
-                  {/* Pagination */}
-                  {!loading && filteredRoles.length > 0 && (
-                    <div className="flex justify-between items-center mt-4">
-                      <p className="text-sm text-gray-600">
-                        Page {currentPage} of {totalPages}
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={currentPage === 1}
-                          onClick={() => setCurrentPage((p) => p - 1)}
-                        >
-                          Previous
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={currentPage === totalPages}
-                          onClick={() => setCurrentPage((p) => p + 1)}
-                        >
-                          Next
-                        </Button>
-                      </div>
+                      {/* Pagination */}
+                      {!loading && filteredRoles.length > 0 && (
+                        <div className="flex justify-between items-center mt-4">
+                          <p className="text-sm text-gray-600">
+                            Showing {(currentPage - 1) * itemsPerPage + 1} -{" "}
+                            {Math.min(
+                              currentPage * itemsPerPage,
+                              filteredRoles.length
+                            )}{" "}
+                            of {filteredRoles.length}
+                          </p>
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={currentPage === 1}
+                              onClick={() =>
+                                setCurrentPage((p) => Math.max(1, p - 1))
+                              }
+                            >
+                              Previous
+                            </Button>
+
+                            {getPageNumbers().map((p) => (
+                              <Button
+                                key={p}
+                                size="sm"
+                                variant={
+                                  p === currentPage ? undefined : "outline"
+                                }
+                                className={
+                                  p === currentPage
+                                    ? "bg-primary text-white"
+                                    : ""
+                                }
+                                onClick={() => setCurrentPage(p)}
+                              >
+                                {p}
+                              </Button>
+                            ))}
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={currentPage === totalPages}
+                              onClick={() =>
+                                setCurrentPage((p) =>
+                                  Math.min(totalPages, p + 1)
+                                )
+                              }
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>

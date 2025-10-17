@@ -15,7 +15,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Shield, Save } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Shield, Save, Building2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 interface Permission {
@@ -25,10 +32,17 @@ interface Permission {
   category: string;
 }
 
+interface Department {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 interface Role {
   id: string;
   name: string;
   description?: string;
+  department_id?: string;
   permission_count: number;
 }
 
@@ -47,23 +61,29 @@ export function RoleFormDrawer({
 }: RoleFormDrawerProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchingPermissions, setFetchingPermissions] = useState(false);
+  const [fetchingDepartments, setFetchingDepartments] = useState(false);
 
   const isEditing = !!role;
 
   useEffect(() => {
     if (open) {
       fetchPermissions();
+      fetchDepartments();
       if (isEditing && role) {
         setName(role.name);
         setDescription(role.description || "");
+        setDepartmentId(role.department_id || "");
         fetchRolePermissions(role.id);
       } else {
         setName("");
         setDescription("");
+        setDepartmentId("");
         setSelectedPermissions([]);
       }
     }
@@ -85,6 +105,22 @@ export function RoleFormDrawer({
     }
   };
 
+  const fetchDepartments = async () => {
+    setFetchingDepartments(true);
+    try {
+      const response = await fetch("/api/departments");
+      if (response.ok) {
+        const { departments } = await response.json();
+        setDepartments(departments || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch departments:", error);
+      toast.error("Failed to load departments");
+    } finally {
+      setFetchingDepartments(false);
+    }
+  };
+
   const fetchRolePermissions = async (roleId: string) => {
     try {
       const response = await fetch(`/api/roles/${roleId}/permissions`);
@@ -100,6 +136,7 @@ export function RoleFormDrawer({
   const resetForm = () => {
     setName("");
     setDescription("");
+    setDepartmentId("");
     setSelectedPermissions([]);
   };
 
@@ -117,6 +154,11 @@ export function RoleFormDrawer({
       return;
     }
 
+    if (!departmentId) {
+      toast.error("Please select a department");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -131,6 +173,7 @@ export function RoleFormDrawer({
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim(),
+          departmentId: departmentId,
           permissions: selectedPermissions,
         }),
       });
@@ -199,6 +242,27 @@ export function RoleFormDrawer({
                   required
                   className="focus:ring-primary focus:border-primary"
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="department" className="text-gray-700">
+                  Department <span className="text-red-500">*</span>
+                </Label>
+                <Select value={departmentId} onValueChange={setDepartmentId}>
+                  <SelectTrigger className="focus:ring-primary focus:border-primary">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-primary" />
+                          {dept.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* <div>
@@ -279,7 +343,7 @@ export function RoleFormDrawer({
             <div className="flex gap-3 pt-4">
               <Button
                 onClick={handleSubmit}
-                disabled={!name.trim() || isLoading}
+                disabled={!name.trim() || !departmentId || isLoading}
                 className="flex-1 bg-primary hover:bg-primary/90"
               >
                 <Save className="h-4 w-4 mr-2" />

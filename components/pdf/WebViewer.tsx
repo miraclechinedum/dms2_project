@@ -29,6 +29,7 @@ interface WebViewerProps {
   existingAnnotations: Annotation[];
   registerHandlers?: (handlers: {
     highlightAnnotation: (id: string) => Promise<void>;
+    exportDocument: () => Promise<void>;
   }) => void;
 }
 
@@ -50,6 +51,9 @@ export default function WebViewerComponent({
   const annotationChangeHandlerRef = useRef<any>(null);
   const [viewerReady, setViewerReady] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [instanceId] = useState(
+    () => `webviewer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  );
 
   // Calculate if current user can annotate
   const canAnnotate =
@@ -214,10 +218,132 @@ export default function WebViewerComponent({
     }
   };
 
-  // Initialize WebViewer with permission control
-  useEffect(() => {
-    if (!viewer.current || initialized) return;
+  // Cleanup function
+  const cleanupWebViewer = () => {
+    console.log("🧹 WebViewer cleanup for instance:", instanceId);
 
+    try {
+      const instance = instanceRef.current;
+      if (instance) {
+        const { Core, UI } = instance;
+
+        // Remove event listeners
+        const dv = resolveDocumentViewer(Core);
+        const am = resolveAnnotationManager(Core, dv);
+
+        if (am && annotationChangeHandlerRef.current) {
+          try {
+            am.removeEventListener(
+              "annotationChanged",
+              annotationChangeHandlerRef.current
+            );
+          } catch (e) {
+            console.warn("Failed to remove annotation listener:", e);
+          }
+        }
+
+        // Close document and destroy instance
+        try {
+          UI.closeDocument();
+        } catch (e) {
+          console.warn("Failed to close document:", e);
+        }
+
+        // Force cleanup of WebViewer DOM
+        try {
+          UI.dispose();
+        } catch (e) {
+          console.warn("Failed to dispose UI:", e);
+        }
+      }
+    } catch (e) {
+      console.warn("WebViewer cleanup error:", e);
+    } finally {
+      instanceRef.current = null;
+      annotationChangeHandlerRef.current = null;
+      setViewerReady(false);
+      setInitialized(false);
+
+      // Clear the container
+      if (viewer.current) {
+        viewer.current.innerHTML = "";
+      }
+
+      removeReadOnlyCss();
+      clearLoadingOverlays();
+    }
+  };
+
+  // Export document function
+  const exportDocument = async () => {
+    const inst = instanceRef.current;
+    if (!inst || !inst.Core) {
+      addToast("Viewer not ready for export", 3000);
+      throw new Error("Viewer not ready");
+    }
+
+    try {
+      const Core = inst.Core;
+      const dv = resolveDocumentViewer(Core);
+      const am = resolveAnnotationManager(Core, dv);
+
+      if (!dv || !am) {
+        addToast("Viewer/export not ready", 3000);
+        throw new Error("Viewer components not available");
+      }
+
+      const doc = dv.getDocument?.();
+      if (!doc) {
+        addToast("Document not loaded", 3000);
+        throw new Error("Document not loaded");
+      }
+
+      addToast("Preparing document for export...", 2000);
+
+      // Export annotations as XFDF
+      const xfdfString = await am.exportAnnotations();
+
+      // Get PDF data with annotations flattened
+      const data = await doc.getFileData({
+        xfdfString,
+        flatten: true,
+      });
+
+      // Create blob and download
+      const blob = new Blob([data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `annotated-document-${documentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Persist XFDF to server
+      await persistXfdf(am);
+
+      addToast("Document exported successfully!", 3000);
+    } catch (e) {
+      console.error("Export error", e);
+      addToast("Failed to export document", 4000);
+      throw e;
+    }
+  };
+
+  // Initialize WebViewer with proper cleanup
+  useEffect(() => {
+    if (!viewer.current) {
+      console.log("❌ WebViewer container not found");
+      return;
+    }
+
+    if (initialized) {
+      console.log("🔄 WebViewer already initialized, skipping");
+      return;
+    }
+
+    console.log("🚀 WebViewer init starting for instance:", instanceId);
     console.info("WebViewer init - documentUrl:", documentUrl);
     console.info(
       "Permission check - canAnnotate:",
@@ -228,7 +354,12 @@ export default function WebViewerComponent({
       currentUserId
     );
 
-    let instance: any = null;
+    let mountSuccessful = false;
+
+    // Clean up any existing content first
+    if (viewer.current) {
+      viewer.current.innerHTML = "";
+    }
 
     // Define disabled elements based on permissions
     const disabledElements = !canAnnotate
@@ -265,7 +396,6 @@ export default function WebViewerComponent({
         enableFilePicker: false,
         enableMeasurement: canAnnotate,
         enableRedaction: canAnnotate,
-        // Add these for better toolbar control
         fullAPI: true,
         css: canAnnotate
           ? ""
@@ -274,9 +404,12 @@ export default function WebViewerComponent({
       viewer.current
     )
       .then((webViewerInstance) => {
-        instance = webViewerInstance;
-        instanceRef.current = instance;
-        const { UI, Core } = instance;
+        instanceRef.current = webViewerInstance;
+        mountSuccessful = true;
+
+        const { UI, Core } = webViewerInstance;
+
+        console.log("✅ WebViewer mounted successfully");
 
         // SIMPLIFIED: Let WebViewer handle toolbar based on disabledElements
         if (canAnnotate) {
@@ -462,8 +595,12 @@ export default function WebViewerComponent({
               }
             };
 
+            // Register handlers for parent component
             if (typeof registerHandlers === "function") {
-              registerHandlers({ highlightAnnotation });
+              registerHandlers({
+                highlightAnnotation,
+                exportDocument,
+              });
             }
 
             await loadExistingAnnotations();
@@ -482,40 +619,21 @@ export default function WebViewerComponent({
         );
       })
       .catch((err) => {
-        console.error("WebViewer init failed:", err);
+        console.error("❌ WebViewer init failed:", err);
+        mountSuccessful = false;
       });
 
     return () => {
-      try {
-        if (instance) {
-          const inst = instance;
-          const { Core } = inst;
-          const dv = resolveDocumentViewer(Core);
-          const am = resolveAnnotationManager(Core, dv);
-          if (
-            am &&
-            annotationChangeHandlerRef.current &&
-            typeof am.removeEventListener === "function"
-          ) {
-            try {
-              am.removeEventListener(
-                "annotationChanged",
-                annotationChangeHandlerRef.current
-              );
-            } catch {}
-          }
-          inst.UI?.closeDocument?.();
-        }
-      } catch (e) {
-        console.warn("WebViewer cleanup failed:", e);
-      } finally {
-        instanceRef.current = null;
-        annotationChangeHandlerRef.current = null;
-        setViewerReady(false);
-        setInitialized(false);
-      }
+      cleanupWebViewer();
     };
-  }, [documentUrl, documentId, canAnnotate, currentUserId, assignedToUserId]);
+  }, [
+    documentUrl,
+    documentId,
+    canAnnotate,
+    currentUserId,
+    assignedToUserId,
+    instanceId,
+  ]);
 
   // Load annotations when ready
   useEffect(() => {
@@ -957,36 +1075,13 @@ export default function WebViewerComponent({
     return {};
   };
 
-  const handleExport = async () => {
-    const inst = instanceRef.current;
-    if (!inst || !inst.Core) return;
-    try {
-      const Core = inst.Core;
-      const dv = resolveDocumentViewer(Core);
-      const am = resolveAnnotationManager(Core, dv);
-      if (!dv || !am) return console.error("viewer/export not ready");
-      const doc = dv.getDocument?.();
-      const xfdfString = await am.exportAnnotations();
-      const data = await doc.getFileData({ xfdfString, flatten: true });
-      const blob = new Blob([data], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `annotated-document-${documentId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      // Persist XFDF to server after export so the flattened PDF & the server store match
-      await persistXfdf(am);
-    } catch (e) {
-      console.error("handleExport error", e);
-    }
-  };
-
   return (
-    <div className="w-full h-full flex flex-col relative">
-      <div ref={viewer as any} className="flex-1 w-full" />
+    <div className="w-full h-full flex flex-col relative webviewer-container">
+      <div
+        ref={viewer}
+        className="flex-1 w-full"
+        key={`webviewer-container-${instanceId}`}
+      />
       <div style={{ position: "absolute", top: 12, right: 12, zIndex: 9999 }}>
         {toasts.map((t) => (
           <div

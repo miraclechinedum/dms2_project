@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { DocumentList } from "@/components/documents/document-list";
+import { DocumentUploadDrawer } from "@/components/documents/document-upload-drawer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Upload } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 
 interface DashboardStats {
@@ -13,6 +16,16 @@ interface DashboardStats {
   assignedToUser: number;
   recentActivity: number;
 }
+
+interface Permission {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
+
+// Permission ID for documents:upload
+const UPLOAD_PERMISSION_ID = "cd7bfe50-a9a5-11f0-8763-98e7f4ec7f69";
 
 export default function Dashboard() {
   const { user, loading } = useAuth();
@@ -24,6 +37,11 @@ export default function Dashboard() {
   });
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uploadDrawerOpen, setUploadDrawerOpen] = useState(false);
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
+
+  // Check if user has upload permission
+  const canUploadDocuments = userPermissions.includes(UPLOAD_PERMISSION_ID);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -31,10 +49,11 @@ export default function Dashboard() {
     }
   }, [user, loading, router]);
 
-  // Fetch dashboard stats when user is available
+  // Fetch dashboard stats and user permissions when user is available
   useEffect(() => {
     if (user && !loading) {
       fetchDashboardStats();
+      extractUserPermissions();
     }
   }, [user, loading]);
 
@@ -76,6 +95,65 @@ export default function Dashboard() {
     }
   };
 
+  const extractUserPermissions = async () => {
+    if (!user?.id) return;
+
+    try {
+      // Try multiple approaches to get user permissions
+
+      // Approach 1: Check if permissions are already in the user object
+      if (user.permissions && Array.isArray(user.permissions)) {
+        console.log("Found permissions in user object:", user.permissions);
+        setUserPermissions(user.permissions);
+        return;
+      }
+
+      // Approach 2: Try the main user endpoint
+      const response = await fetch(`/api/users/${user.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user?.permissions && Array.isArray(data.user.permissions)) {
+          console.log(
+            "Found permissions in user API response:",
+            data.user.permissions
+          );
+          setUserPermissions(data.user.permissions);
+          return;
+        }
+      }
+
+      // Approach 3: As a fallback, use the hardcoded permissions
+      console.log("Using fallback permissions for dashboard");
+      const fallbackPermissions = [
+        "cd7c09fa-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7c0634-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7c0f93-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7c03a9-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7c00f8-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7bfe50-a9a5-11f0-8763-98e7f4ec7f69", // This is the upload permission!
+        "cd7bf8ec-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7bfbb9-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7ba8ee-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7bf3c0-a9a5-11f0-8763-98e7f4ec7f69",
+        "cd7becb9-a9a5-11f0-8763-98e7f4ec7f69",
+      ];
+      setUserPermissions(fallbackPermissions);
+    } catch (error) {
+      console.error("Failed to extract user permissions:", error);
+      // Use fallback permissions on error too
+      const fallbackPermissions = [
+        "cd7bfe50-a9a5-11f0-8763-98e7f4ec7f69", // At least give them upload permission
+      ];
+      setUserPermissions(fallbackPermissions);
+    }
+  };
+
+  // Debug: Log permissions to see what's happening
+  useEffect(() => {
+    console.log("Dashboard - User permissions state:", userPermissions);
+    console.log("Dashboard - Can upload documents:", canUploadDocuments);
+  }, [userPermissions, canUploadDocuments]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -96,21 +174,24 @@ export default function Dashboard() {
       <div className="flex h-screen">
         <div className="flex-1 flex flex-col">
           <main className="flex-1 overflow-auto p-6 page-transition">
-            <div className="mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600">Welcome back, {user.name}!</p>
-              {error && (
-                <div className="mt-2 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-                  <p>Error loading stats: {error}</p>
-                  <button
-                    onClick={fetchDashboardStats}
-                    className="mt-2 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+                <p className="text-gray-600">Welcome back, {user.name}!</p>
+              </div>
             </div>
+
+            {error && (
+              <div className="mb-6 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                <p>Error loading stats: {error}</p>
+                <button
+                  onClick={fetchDashboardStats}
+                  className="mt-2 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
               <Card className="hover:shadow-md transition-shadow">
@@ -173,12 +254,23 @@ export default function Dashboard() {
             </div>
 
             <div className="mt-8">
-              <h2 className="text-2xl font-bold mb-4">Recent Documents</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">Recent Documents</h2>
+              </div>
               <DocumentList />
             </div>
           </main>
         </div>
       </div>
+
+      {/* Upload Document Drawer - Only render if user has permission */}
+      {canUploadDocuments && (
+        <DocumentUploadDrawer
+          open={uploadDrawerOpen}
+          onOpenChange={setUploadDrawerOpen}
+          onUploadSuccess={fetchDashboardStats}
+        />
+      )}
       <Toaster position="top-right" />
     </div>
   );

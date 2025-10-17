@@ -18,18 +18,27 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const { name, description, permissions } = await request.json();
+    const { name, description, departmentId, permissions } =
+      await request.json();
 
     console.log("Updating role:", {
       id: params.id,
       name,
       description,
+      departmentId,
       permissions,
     });
 
     if (!name) {
       return NextResponse.json(
         { error: "Role name is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!departmentId) {
+      return NextResponse.json(
+        { error: "Department is required" },
         { status: 400 }
       );
     }
@@ -46,8 +55,8 @@ export async function PUT(
 
     // Update role
     await DatabaseService.query(
-      "UPDATE roles SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [name, description || null, params.id]
+      "UPDATE roles SET name = ?, description = ?, department_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [name, description || null, departmentId, params.id]
     );
 
     console.log("Role updated, now updating permissions...");
@@ -64,7 +73,6 @@ export async function PUT(
     if (permissions && permissions.length > 0) {
       console.log("Adding new permissions:", permissions);
 
-      // Use individual inserts instead of batch insert to avoid issues
       for (const permissionId of permissions) {
         try {
           await DatabaseService.query(
@@ -91,7 +99,6 @@ export async function PUT(
   } catch (error) {
     console.error("Update role error:", error);
 
-    // Provide more specific error information
     let errorMessage = "Failed to update role";
     if (error instanceof Error) {
       errorMessage += `: ${error.message}`;
@@ -118,7 +125,7 @@ export async function DELETE(
 
     // Check if role has users
     const usersWithRole = await DatabaseService.query(
-      "SELECT id FROM users WHERE role_id = ? LIMIT 1",
+      "SELECT id FROM user_roles WHERE role_id = ? LIMIT 1",
       [params.id]
     );
 

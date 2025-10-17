@@ -1,3 +1,4 @@
+// app/api/documents/upload/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { DatabaseService } from "@/lib/database";
 import { AuthService } from "@/lib/auth";
@@ -47,10 +48,17 @@ export async function POST(request: NextRequest) {
     const title = (formData.get("title") as string) ?? "";
     const description = (formData.get("description") as string) ?? "";
     const assignmentType = (formData.get("assignmentType") as string) ?? "";
-    const assignedUsers = formData.getAll("assignedUsers") as string[]; // may be []
-    const assignedDepartments = formData.getAll(
-      "assignedDepartments"
-    ) as string[]; // may be []
+    const assignedRole = (formData.get("assignedRole") as string) ?? "";
+    const selectedUser = (formData.get("selectedUser") as string) ?? "";
+
+    console.log("📋 Upload form data:", {
+      title,
+      description,
+      assignmentType,
+      assignedRole,
+      selectedUser,
+      file: file ? { name: file.name, size: file.size, type: file.type } : null,
+    });
 
     if (!file || !title) {
       return NextResponse.json(
@@ -62,6 +70,13 @@ export async function POST(request: NextRequest) {
     if (file.type !== "application/pdf") {
       return NextResponse.json(
         { error: "Only PDF files are allowed" },
+        { status: 400 }
+      );
+    }
+
+    if (!selectedUser) {
+      return NextResponse.json(
+        { error: "User assignment is required" },
         { status: 400 }
       );
     }
@@ -100,20 +115,11 @@ export async function POST(request: NextRequest) {
       .toString(36)
       .substr(2, 9)}`;
 
-    // Determine assignment target - use first selected user or current user as fallback
-    let assignedToUser = userId; // Default to current user
-
-    if (assignmentType === "user" && assignedUsers.length > 0) {
-      assignedToUser = assignedUsers[0];
-    }
-    // If department assignment, we'll just assign to current user for now
-    // since we removed department assignment functionality
-
     // Prepare SQL for documents insert
     const docSql = `
       INSERT INTO documents
-      (id, title, file_path, file_size, mime_type, uploaded_by, assigned_to_user, status, created_at, updated_at, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?)
+      (id, title, file_path, file_size, mime_type, uploaded_by, status, created_at, updated_at, description)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?)
     `;
     const docParams = [
       documentId,
@@ -122,7 +128,6 @@ export async function POST(request: NextRequest) {
       buffer.length,
       file.type,
       userId,
-      assignedToUser,
       description,
     ];
 
@@ -157,76 +162,118 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prepare assignment insert SQL (REMOVED department_id)
+    // Prepare assignment insert SQL with both role_id and assigned_to
     const assignmentId = randomUUID();
     const assignmentSql = `
       INSERT INTO document_assignments
-        (id, document_id, assigned_to, assigned_by, roles, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+        (id, document_id, assigned_to, assigned_by, role_id, roles, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     `;
     const assignmentParams = [
       assignmentId,
       documentId,
-      assignedToUser,
+      selectedUser, // Now using the specific user ID instead of null
       userId,
-      "Reviewer",
+      assignedRole, // role_id (keeping for reference)
+      "Reviewer", // roles field (keeping for backward compatibility)
       "assigned",
     ];
 
     // Insert assignment row
     try {
       await DatabaseService.query(assignmentSql, assignmentParams);
-      console.log("✅ Assignment row inserted:", assignmentId);
+      console.log("✅ Assignment row inserted with user:", assignmentId);
 
-      // Create notification for the assigned user if they are not the uploader
-      if (assignedToUser && assignedToUser !== userId) {
-        try {
-          const notificationId = randomUUID();
-
-          // Get uploader's name for the notification message
-          const uploaderResult = await DatabaseService.query(
-            "SELECT name FROM users WHERE id = ?",
-            [userId]
-          );
-
-          let uploaderName = "A user";
-          if (Array.isArray(uploaderResult)) {
-            const rows = Array.isArray(uploaderResult[0])
-              ? uploaderResult[0]
-              : uploaderResult;
-            uploaderName = rows[0]?.name || "A user";
-          }
-
-          const notificationMessage = `${uploaderName} assigned you the document "${title}"`;
-
-          const notificationSql = `
-            INSERT INTO notifications 
-            (id, user_id, type, message, related_document_id, sender_id, is_read, created_at)
-            VALUES (?, ?, 'document_assigned', ?, ?, ?, 0, NOW())
-          `;
-
-          await DatabaseService.query(notificationSql, [
-            notificationId,
-            assignedToUser,
-            notificationMessage,
-            documentId,
-            userId,
-          ]);
-
-          console.log(
-            "✅ Notification created for assigned user:",
-            assignedToUser
-          );
-          console.log("📧 Notification message:", notificationMessage);
-        } catch (notifyErr) {
-          // Don't fail the upload if notification fails
-          console.error("❌ Failed to create notification:", notifyErr);
-          logDbError("Notification creation error:", notifyErr);
-        }
-      } else {
-        console.log(
-          "ℹ️ No notification needed - document assigned to uploader"
+      // Create notification for the specific assigned user
+      try {
+        // Get uploader's name for the notification message
+        const uploaderResult = await DatabaseService.query(
+          "SELECT name FROM users WHERE id = ?",
+          [userId]
         );
+
+        let uploaderName = "A user";
+        if (Array.isArray(uploaderResult)) {
+          const rows = Array.isArray(uploaderResult[0])
+            ? uploaderResult[0]
+            : uploaderResult;
+          uploaderName = rows[0]?.name || "A user";
+        }
+
+        // Get assigned user's details for verification
+        const assignedUserResult = await DatabaseService.query(
+          "SELECT id, name, email FROM users WHERE id = ?",
+          [selectedUser]
+        );
+
+        let assignedUserName = "the user";
+        let assignedUserId = selectedUser;
+
+        if (Array.isArray(assignedUserResult)) {
+          const rows = Array.isArray(assignedUserResult[0])
+            ? assignedUserResult[0]
+            : assignedUserResult;
+          if (rows[0]) {
+            assignedUserName = rows[0].name || "the user";
+            assignedUserId = rows[0].id;
+          }
+        }
+
+        console.log("🔔 Notification details:", {
+          uploaderId: userId,
+          uploaderName,
+          assignedUserId: assignedUserId,
+          assignedUserName,
+          selectedUserFromForm: selectedUser,
+        });
+
+        const notificationMessage = `${uploaderName} assigned the document "${title}" to you`;
+
+        // Create notification for the specific assigned user
+        const notificationId = randomUUID();
+        const notificationSql = `
+          INSERT INTO notifications 
+          (id, user_id, type, message, related_document_id, sender_id, is_read, created_at)
+          VALUES (?, ?, 'document_assigned', ?, ?, ?, 0, NOW())
+        `;
+
+        const notificationParams = [
+          notificationId,
+          assignedUserId, // Send to the specific assigned user (using verified ID from DB)
+          notificationMessage,
+          documentId,
+          userId, // Sender is the uploader
+        ];
+
+        console.log(
+          "🔔 Creating notification with params:",
+          notificationParams
+        );
+
+        await DatabaseService.query(notificationSql, notificationParams);
+
+        console.log(
+          `✅ Notification created for user: ${assignedUserName} (ID: ${assignedUserId})`
+        );
+
+        // Verify notification was created
+        const verifyNotification = await DatabaseService.query(
+          "SELECT id, user_id, message FROM notifications WHERE id = ?",
+          [notificationId]
+        );
+        console.log("🔔 Notification verification:", verifyNotification);
+      } catch (notifyErr) {
+        // Don't fail the upload if notification fails
+        console.error("❌ Failed to create notification:", notifyErr);
+        logDbError("Notification creation error:", notifyErr);
+
+        // Log additional debug info
+        console.error("🔔 Notification error context:", {
+          selectedUser,
+          userId,
+          documentId,
+          title,
+        });
       }
 
       // Success response: return assignment metadata
@@ -238,8 +285,9 @@ export async function POST(request: NextRequest) {
           assignment: {
             id: assignmentId,
             document_id: documentId,
-            assigned_to: assignedToUser,
+            assigned_to: selectedUser,
             assigned_by: userId,
+            role_id: assignedRole,
             roles: "Reviewer",
             status: "assigned",
           },

@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { User, Save, Shield } from "lucide-react";
+import { User, Save, Shield, Building2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 interface Department {
@@ -33,6 +33,7 @@ interface Role {
   id: string;
   name: string;
   description?: string;
+  department_id?: string;
 }
 
 interface Permission {
@@ -70,7 +71,8 @@ export function UserFormDrawer({
   const [roleId, setRoleId] = useState("");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [filteredRoles, setFilteredRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchingPermissions, setFetchingPermissions] = useState(false);
@@ -82,7 +84,7 @@ export function UserFormDrawer({
   useEffect(() => {
     if (open) {
       fetchDepartments();
-      fetchRoles();
+      fetchAllRoles();
       fetchAllPermissions();
       setHasLoadedUserPermissions(false); // Reset when opening form
     }
@@ -110,6 +112,44 @@ export function UserFormDrawer({
       setHasLoadedUserPermissions(false);
     }
   }, [user]);
+
+  // Filter roles when department changes
+  useEffect(() => {
+    if (departmentId) {
+      fetchRolesByDepartment(departmentId);
+    } else {
+      setFilteredRoles([]);
+      setRoleId("");
+    }
+  }, [departmentId]);
+
+  // Fetch roles by department
+  const fetchRolesByDepartment = async (deptId: string) => {
+    try {
+      console.log("Fetching roles for department:", deptId);
+      const response = await fetch(
+        `/api/roles/by-department?departmentId=${deptId}`
+      );
+      if (response.ok) {
+        const { roles } = await response.json();
+        console.log("Roles for department:", roles);
+
+        // Use all roles without filtering out Super Admin
+        setFilteredRoles(roles);
+
+        // If current role is not in the filtered list, clear it
+        if (roleId && !roles.some((role) => role.id === roleId)) {
+          setRoleId("");
+        }
+      } else {
+        console.error("Failed to fetch roles by department");
+        setFilteredRoles([]);
+      }
+    } catch (error) {
+      console.error("Error fetching roles by department:", error);
+      setFilteredRoles([]);
+    }
+  };
 
   // Fetch user permissions when editing
   const fetchUserPermissions = async (userId: string) => {
@@ -152,16 +192,13 @@ export function UserFormDrawer({
     }
   };
 
-  const fetchRoles = async () => {
+  const fetchAllRoles = async () => {
     try {
       const response = await fetch("/api/roles");
       if (response.ok) {
         const { roles } = await response.json();
-        // Filter out "Super Admin" role
-        const filteredRoles = roles.filter(
-          (role: Role) => role.name !== "Super Admin"
-        );
-        setRoles(filteredRoles);
+        // Use all roles without filtering out Super Admin
+        setAllRoles(roles);
       }
     } catch (error) {
       console.error("Failed to fetch roles:", error);
@@ -214,6 +251,12 @@ export function UserFormDrawer({
         ? prev.filter((id) => id !== permissionId)
         : [...prev, permissionId]
     );
+  };
+
+  // Handle department change
+  const handleDepartmentChange = (newDepartmentId: string) => {
+    setDepartmentId(newDepartmentId);
+    // Role will be automatically cleared by the useEffect above
   };
 
   // Handle role change - reset permissions only for new users
@@ -369,14 +412,20 @@ export function UserFormDrawer({
                 <Label htmlFor="department" className="text-gray-700">
                   Department <span className="text-red-500">*</span>
                 </Label>
-                <Select value={departmentId} onValueChange={setDepartmentId}>
+                <Select
+                  value={departmentId}
+                  onValueChange={handleDepartmentChange}
+                >
                   <SelectTrigger className="focus:ring-primary focus:border-primary">
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent position="popper">
                     {departments.map((dept) => (
                       <SelectItem key={dept.id} value={dept.id}>
-                        {dept.name}
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-primary" />
+                          {dept.name}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -387,18 +436,49 @@ export function UserFormDrawer({
                 <Label htmlFor="role" className="text-gray-700">
                   Role <span className="text-red-500">*</span>
                 </Label>
-                <Select value={roleId} onValueChange={handleRoleChange}>
+                <Select
+                  value={roleId}
+                  onValueChange={handleRoleChange}
+                  disabled={!departmentId}
+                >
                   <SelectTrigger className="focus:ring-primary focus:border-primary">
-                    <SelectValue placeholder="Select role" />
+                    <SelectValue
+                      placeholder={
+                        !departmentId
+                          ? "Select department first"
+                          : filteredRoles.length === 0
+                          ? "No roles available for this department"
+                          : "Select role"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent position="popper">
-                    {roles.map((role) => (
+                    {filteredRoles.map((role) => (
                       <SelectItem key={role.id} value={role.id}>
-                        {role.name}
+                        <div className="flex items-center gap-2">
+                          <Shield className="h-4 w-4 text-primary" />
+                          {role.name}
+                          {role.description && (
+                            <span className="text-xs text-gray-500 ml-1">
+                              - {role.description}
+                            </span>
+                          )}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!departmentId && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Please select a department first to see available roles
+                  </p>
+                )}
+                {departmentId && filteredRoles.length === 0 && (
+                  <p className="text-xs text-orange-500 mt-1">
+                    No roles available for the selected department. Please
+                    create roles for this department first.
+                  </p>
+                )}
               </div>
             </div>
 

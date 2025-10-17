@@ -1,3 +1,4 @@
+// components/documents/document-upload-drawer.tsx
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
@@ -8,6 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -15,14 +23,35 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileText, X, Search, Users } from "lucide-react";
+import {
+  Upload,
+  FileText,
+  X,
+  Search,
+  Shield,
+  Building2,
+  User,
+} from "lucide-react";
 import { toast } from "react-hot-toast";
 import { cn } from "@/lib/utils";
+
+interface Department {
+  id: string;
+  name: string;
+}
+
+interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  department_id?: string;
+}
 
 interface User {
   id: string;
   name: string;
   email: string;
+  role_id: string;
 }
 
 interface DocumentUploadDrawerProps {
@@ -38,47 +67,135 @@ export function DocumentUploadDrawer({
 }: DocumentUploadDrawerProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<string>("");
   const [selectedUser, setSelectedUser] = useState<string>("");
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [filteredRoles, setFilteredRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
 
-  const { user } = useAuth();
+  const { user: currentUser } = useAuth();
 
   useEffect(() => {
     if (open) {
-      fetchUsers();
+      fetchDepartments();
+      fetchAllRoles();
     }
   }, [open]);
 
+  // Filter roles when department changes
+  useEffect(() => {
+    if (selectedDepartment) {
+      const rolesForDepartment = allRoles.filter(
+        (role) => role.department_id === selectedDepartment
+      );
+      setFilteredRoles(rolesForDepartment);
+
+      // If current role is not in the filtered list, clear it
+      if (
+        selectedRole &&
+        !rolesForDepartment.some((role) => role.id === selectedRole)
+      ) {
+        setSelectedRole("");
+        setSelectedUser("");
+        setUsers([]);
+        setFilteredUsers([]);
+      }
+    } else {
+      setFilteredRoles([]);
+      setSelectedRole("");
+      setSelectedUser("");
+      setUsers([]);
+      setFilteredUsers([]);
+    }
+  }, [selectedDepartment, allRoles, selectedRole]);
+
+  // Fetch users when role is selected
+  useEffect(() => {
+    if (selectedRole) {
+      fetchUsersByRole(selectedRole);
+    } else {
+      setUsers([]);
+      setFilteredUsers([]);
+      setSelectedUser("");
+    }
+  }, [selectedRole]);
+
+  // Filter roles by search query
   useEffect(() => {
     if (searchQuery) {
+      const filtered = filteredRoles.filter(
+        (role) =>
+          role.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          role.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredRoles(filtered);
+    } else if (selectedDepartment) {
+      // Reset to department-filtered roles when search is cleared
+      const rolesForDepartment = allRoles.filter(
+        (role) => role.department_id === selectedDepartment
+      );
+      setFilteredRoles(rolesForDepartment);
+    }
+  }, [searchQuery, selectedDepartment, allRoles]);
+
+  // Filter users by search query
+  useEffect(() => {
+    if (userSearchQuery) {
       const filtered = users.filter(
-        (u) =>
-          u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          u.email.toLowerCase().includes(searchQuery.toLowerCase())
+        (user) =>
+          user.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+          user.email.toLowerCase().includes(userSearchQuery.toLowerCase())
       );
       setFilteredUsers(filtered);
     } else {
       setFilteredUsers(users);
     }
-  }, [searchQuery, users]);
+  }, [userSearchQuery, users]);
 
-  const fetchUsers = async () => {
+  const fetchDepartments = async () => {
     try {
-      const response = await fetch("/api/users");
+      const response = await fetch("/api/departments");
       if (response.ok) {
-        const { users } = await response.json();
-        // Filter out current user
-        const otherUsers = users.filter((u: User) => u.id !== user?.id);
-        setUsers(otherUsers);
-        setFilteredUsers(otherUsers);
+        const { departments } = await response.json();
+        setDepartments(departments);
       }
     } catch (error) {
-      console.error("Failed to fetch users:", error);
+      console.error("Failed to fetch departments:", error);
+    }
+  };
+
+  const fetchAllRoles = async () => {
+    try {
+      const response = await fetch("/api/roles");
+      if (response.ok) {
+        const { roles } = await response.json();
+        setAllRoles(roles);
+      }
+    } catch (error) {
+      console.error("Failed to fetch roles:", error);
+    }
+  };
+
+  const fetchUsersByRole = async (roleId: string) => {
+    try {
+      const response = await fetch(`/api/users/by-role?roleId=${roleId}`);
+      if (response.ok) {
+        const { users } = await response.json();
+        setUsers(users);
+        setFilteredUsers(users);
+      }
+    } catch (error) {
+      console.error("Failed to fetch users by role:", error);
+      setUsers([]);
+      setFilteredUsers([]);
     }
   };
 
@@ -109,14 +226,40 @@ export function DocumentUploadDrawer({
     setTitle("");
     setDescription("");
     setSelectedFile(null);
+    setSelectedDepartment("");
+    setSelectedRole("");
     setSelectedUser("");
     setSearchQuery("");
+    setUserSearchQuery("");
     setUploadProgress(0);
   };
 
+  const handleDepartmentChange = (newDepartmentId: string) => {
+    setSelectedDepartment(newDepartmentId);
+    setSelectedRole("");
+    setSelectedUser("");
+    setUsers([]);
+    setFilteredUsers([]);
+  };
+
+  const handleRoleChange = (newRoleId: string) => {
+    setSelectedRole(newRoleId);
+    setSelectedUser("");
+  };
+
   const uploadDocument = async () => {
-    if (!selectedFile || !title || !user) {
+    if (!selectedFile || !title || !currentUser) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+
+    if (!selectedDepartment) {
+      toast.error("Please select a department");
+      return;
+    }
+
+    if (!selectedRole) {
+      toast.error("Please select a role to assign the document to");
       return;
     }
 
@@ -133,8 +276,9 @@ export function DocumentUploadDrawer({
       formData.append("file", selectedFile);
       formData.append("title", title);
       formData.append("description", description);
-      formData.append("assignmentType", "user");
-      formData.append("assignedUsers", selectedUser);
+      formData.append("assignmentType", "role");
+      formData.append("assignedRole", selectedRole);
+      formData.append("selectedUser", selectedUser); // FIXED: Changed from assignedUser to selectedUser
 
       // Simulate upload progress
       const progressInterval = setInterval(() => {
@@ -184,7 +328,8 @@ export function DocumentUploadDrawer({
             Upload Document
           </SheetTitle>
           <SheetDescription>
-            Upload a PDF document and assign it to a user for review
+            Upload a PDF document and assign it to a specific user within a role
+            and department
           </SheetDescription>
         </SheetHeader>
 
@@ -266,63 +411,170 @@ export function DocumentUploadDrawer({
             </div>
           </div>
 
-          {/* User Selection */}
+          {/* Department Selection */}
           <div>
-            <Label>Assign to User *</Label>
+            <Label htmlFor="department">Department *</Label>
+            <Select
+              value={selectedDepartment}
+              onValueChange={handleDepartmentChange}
+            >
+              <SelectTrigger className="focus:ring-primary focus:border-primary">
+                <SelectValue placeholder="Select department" />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id}>
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-primary" />
+                      {dept.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!selectedDepartment && (
+              <p className="text-xs text-gray-500 mt-1">
+                Please select a department first to see available roles
+              </p>
+            )}
+          </div>
+
+          {/* Role Selection */}
+          <div>
+            <Label>Assign to Role *</Label>
             <div className="space-y-3">
               {/* Search Input */}
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Search users by name or email..."
+                  placeholder="Search roles by name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
+                  disabled={!selectedDepartment}
                 />
               </div>
 
-              {/* User List */}
+              {/* Role List */}
               <div className="border rounded-lg p-4 max-h-48 overflow-y-auto">
                 <div className="space-y-3">
-                  {filteredUsers.length > 0 ? (
-                    filteredUsers.map((user) => (
+                  {filteredRoles.length > 0 ? (
+                    filteredRoles.map((role) => (
                       <div
-                        key={user.id}
+                        key={role.id}
                         className="flex items-center space-x-3 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => setSelectedUser(user.id)}
+                        onClick={() => handleRoleChange(role.id)}
                       >
                         <div
                           className={cn(
                             "w-4 h-4 rounded-full border-2 flex items-center justify-center",
-                            selectedUser === user.id
+                            selectedRole === role.id
                               ? "bg-primary border-primary"
                               : "border-gray-300"
                           )}
                         >
-                          {selectedUser === user.id && (
+                          {selectedRole === role.id && (
                             <div className="w-2 h-2 rounded-full bg-white" />
                           )}
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-sm">{user.name}</p>
-                          <p className="text-xs text-gray-600">{user.email}</p>
+                          <p className="font-medium text-sm flex items-center gap-2">
+                            <Shield className="h-4 w-4 text-primary" />
+                            {role.name}
+                          </p>
+                          {role.description && (
+                            <p className="text-xs text-gray-600">
+                              {role.description}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))
+                  ) : selectedDepartment ? (
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      No roles found for this department
+                    </p>
                   ) : (
                     <p className="text-sm text-gray-500 text-center py-4">
-                      No users found
+                      Please select a department first
                     </p>
                   )}
                 </div>
-                {selectedUser && (
+                {selectedRole && (
                   <p className="text-sm text-gray-600 mt-2">
-                    Selected: {users.find((u) => u.id === selectedUser)?.name}
+                    Selected Role:{" "}
+                    {allRoles.find((r) => r.id === selectedRole)?.name}
                   </p>
                 )}
               </div>
             </div>
           </div>
+
+          {/* User Selection (only shown when role is selected) */}
+          {selectedRole && (
+            <div>
+              <Label>Assign to Specific User *</Label>
+              <div className="space-y-3">
+                {/* User Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search users by name or email..."
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+
+                {/* User List */}
+                <div className="border rounded-lg p-4 max-h-48 overflow-y-auto">
+                  <div className="space-y-3">
+                    {filteredUsers.length > 0 ? (
+                      filteredUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center space-x-3 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => setSelectedUser(user.id)}
+                        >
+                          <div
+                            className={cn(
+                              "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                              selectedUser === user.id
+                                ? "bg-primary border-primary"
+                                : "border-gray-300"
+                            )}
+                          >
+                            {selectedUser === user.id && (
+                              <div className="w-2 h-2 rounded-full bg-white" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-sm flex items-center gap-2">
+                              <User className="h-4 w-4 text-primary" />
+                              {user.name}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {user.email}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        No users found with this role
+                      </p>
+                    )}
+                  </div>
+                  {selectedUser && (
+                    <p className="text-sm text-gray-600 mt-2">
+                      Selected User:{" "}
+                      {users.find((u) => u.id === selectedUser)?.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Upload Progress */}
           {isUploading && (
@@ -339,7 +591,14 @@ export function DocumentUploadDrawer({
             <Button
               type="button"
               onClick={uploadDocument}
-              disabled={!selectedFile || !title || !selectedUser || isUploading}
+              disabled={
+                !selectedFile ||
+                !title ||
+                !selectedDepartment ||
+                !selectedRole ||
+                !selectedUser ||
+                isUploading
+              }
               className="flex-1"
             >
               {isUploading ? "Uploading..." : "Upload Document"}
