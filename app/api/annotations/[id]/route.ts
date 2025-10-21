@@ -147,7 +147,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fix: Use the correct property names based on the AuthService return type
+    // Fix: Use type assertion to access properties
     const tokenUserId =
       (decoded as any)?.userId ??
       (decoded as any)?.id ??
@@ -158,7 +158,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // Rest of your PATCH function remains the same...
+    // Fetch existing annotation and check owner
     const checkSql = `SELECT * FROM annotations WHERE id = ? LIMIT 1`;
     const checkRes: any = await DatabaseService.query(checkSql, [annotationId]);
     const checkRows = normalizeRows(checkRes);
@@ -173,7 +173,110 @@ export async function PATCH(
       return NextResponse.json({ error: "Permission denied" }, { status: 403 });
     }
 
-    // ... rest of your PATCH function
+    const body = await request.json().catch(() => ({}));
+    const {
+      content = undefined,
+      position_x = undefined,
+      position_y = undefined,
+      page_number = undefined,
+    } = body;
+
+    const updates: string[] = [];
+    const paramsArr: any[] = [];
+
+    if (content !== undefined) {
+      try {
+        JSON.stringify(content);
+      } catch (err) {
+        const error = err as Error;
+        console.error(
+          "PATCH: content not serializable:",
+          error?.message ?? err
+        );
+        return NextResponse.json(
+          { error: "Content is not serializable" },
+          { status: 400 }
+        );
+      }
+      updates.push("content = ?");
+      paramsArr.push(JSON.stringify(content));
+    }
+
+    if (position_x !== undefined) {
+      updates.push("position_x = ?");
+      paramsArr.push(Number(position_x));
+    }
+    if (position_y !== undefined) {
+      updates.push("position_y = ?");
+      paramsArr.push(Number(position_y));
+    }
+    if (page_number !== undefined) {
+      updates.push("page_number = ?");
+      paramsArr.push(Number(page_number));
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json(
+        { error: "No updatable fields provided" },
+        { status: 400 }
+      );
+    }
+
+    // updated_at timestamp
+    const now = new Date();
+    const dbNow = toMySQLDatetime(now);
+    updates.push("updated_at = ?");
+    paramsArr.push(dbNow);
+
+    paramsArr.push(annotationId);
+
+    const sql = `UPDATE annotations SET ${updates.join(", ")} WHERE id = ?`;
+    await DatabaseService.query(sql, paramsArr);
+
+    // Return updated annotation with user info
+    const fetchSql = `
+      SELECT a.*, u.name as user_name, u.email as user_email
+      FROM annotations a
+      LEFT JOIN users u ON a.user_id = u.id
+      WHERE a.id = ? LIMIT 1
+    `;
+    const fetchRes: any = await DatabaseService.query(fetchSql, [annotationId]);
+    const rows = normalizeRows(fetchRes);
+    const row = rows && rows[0] ? rows[0] : null;
+    if (!row)
+      return NextResponse.json(
+        { error: "Failed to fetch updated annotation" },
+        { status: 500 }
+      );
+
+    let parsedContent = row.content;
+    try {
+      if (typeof parsedContent === "string" && parsedContent)
+        parsedContent = JSON.parse(parsedContent);
+    } catch {
+      // ignore parse errors
+    }
+
+    const responseAnnotation = {
+      id: row.id,
+      document_id: row.document_id,
+      user_id: row.user_id,
+      page_number: Number(row.page_number),
+      annotation_type: row.annotation_type,
+      content: parsedContent,
+      sequence_number: Number(row.sequence_number),
+      position_x: Number(row.position_x),
+      position_y: Number(row.position_y),
+      created_at: toIsoStringFromDb(row.created_at),
+      updated_at: toIsoStringFromDb(row.updated_at),
+      user_name: row.user_name || row.user_email,
+      user_email: row.user_email,
+    };
+
+    return NextResponse.json(
+      { annotation: responseAnnotation },
+      { status: 200 }
+    );
   } catch (err) {
     const error = err as Error;
     console.error(
@@ -212,7 +315,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fix: Use the same approach here
+    // Fix: Use type assertion to access properties
     const tokenUserId =
       (decoded as any)?.userId ??
       (decoded as any)?.id ??
@@ -223,7 +326,28 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // ... rest of your DELETE function
+    const checkSql = `SELECT user_id FROM annotations WHERE id = ? LIMIT 1`;
+    const checkRes: any = await DatabaseService.query(checkSql, [annotationId]);
+    const checkRows = normalizeRows(checkRes);
+    if (!checkRows || checkRows.length === 0) {
+      return NextResponse.json(
+        { error: "Annotation not found" },
+        { status: 404 }
+      );
+    }
+
+    const annotationUserId = checkRows[0].user_id;
+    if (String(annotationUserId) !== String(tokenUserId)) {
+      return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+    }
+
+    const deleteSql = `DELETE FROM annotations WHERE id = ?`;
+    await DatabaseService.query(deleteSql, [annotationId]);
+
+    return NextResponse.json(
+      { message: "Annotation deleted successfully" },
+      { status: 200 }
+    );
   } catch (err) {
     const error = err as Error;
     console.error(
