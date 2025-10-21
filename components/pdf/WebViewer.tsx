@@ -1082,7 +1082,8 @@ export default function WebViewerComponent({
         className="flex-1 w-full"
         key={`webviewer-container-${instanceId}`}
       />
-      <div style={{ position: "absolute", top: 12, right: 12, zIndex: 9999 }}>
+      {/* <div style={{ position: "absolute", top: 12, right: 12, zIndex: 9999 }}> */}
+      <div>
         {toasts.map((t) => (
           <div
             key={t.id}
