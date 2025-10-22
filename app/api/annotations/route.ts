@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DatabaseService } from "@/lib/database";
 import { AuthService } from "@/lib/auth";
+import type { DecodedToken } from "@/lib/auth";
 
 /**
  * Helper: normalize mysql2 return shapes to rows array
@@ -16,13 +17,15 @@ function normalizeRows(result: any): any[] {
 /**
  * Authenticate request and extract user info
  */
-async function authenticate(req: NextRequest) {
+async function authenticate(req: NextRequest): Promise<DecodedToken | null> {
   const token = req.cookies.get("auth-token")?.value ?? null;
   if (!token) return null;
   try {
-    const decoded = await Promise.resolve(AuthService.verifyToken(token));
+    // AuthService.verifyToken now returns DecodedToken | null
+    const decoded = await AuthService.verifyToken(token);
     return decoded;
   } catch (e) {
+    console.error("Token verification error:", e);
     return null;
   }
 }
@@ -78,11 +81,16 @@ function formatDateForMySQL(d: Date) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const documentId = searchParams.get("documentId") || searchParams.get("document_id");
-    const pageNumber = searchParams.get("pageNumber") || searchParams.get("page_number");
+    const documentId =
+      searchParams.get("documentId") || searchParams.get("document_id");
+    const pageNumber =
+      searchParams.get("pageNumber") || searchParams.get("page_number");
 
     if (!documentId) {
-      return NextResponse.json({ error: "Document ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Document ID is required" },
+        { status: 400 }
+      );
     }
 
     // Build query with optional page filter
@@ -123,13 +131,25 @@ export async function GET(request: NextRequest) {
     // Parse JSON content if stored as string
     const processedAnnotations = annotations.map((annotation: any) => ({
       ...annotation,
-      content: typeof annotation.content === "string" && annotation.content ? JSON.parse(annotation.content) : annotation.content,
+      content:
+        typeof annotation.content === "string" && annotation.content
+          ? JSON.parse(annotation.content)
+          : annotation.content,
     }));
 
-    return NextResponse.json({ annotations: processedAnnotations }, { status: 200 });
+    return NextResponse.json(
+      { annotations: processedAnnotations },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Error fetching annotations:", error);
-    return NextResponse.json({ error: "Failed to fetch annotations", detail: String((error as any)?.message ?? error) }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Failed to fetch annotations",
+        detail: String((error as any)?.message ?? error),
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -146,9 +166,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = decoded?.userId ?? decoded?.id ?? decoded?.sub ?? decoded?.uid ?? null;
+    // resolve userId with fallbacks (userId, id, sub, uid)
+    const userId =
+      decoded?.userId ?? decoded?.id ?? decoded?.sub ?? decoded?.uid ?? null;
     if (!userId) {
-      return NextResponse.json({ error: "Invalid user token" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Invalid user token" },
+        { status: 401 }
+      );
     }
 
     // Get user details
@@ -179,7 +204,9 @@ export async function POST(request: NextRequest) {
 
     // Normalize field names (prefer snake_case for consistency)
     const normalizedData = {
-      id: id || `annotation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id:
+        id ||
+        `annotation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       document_id: document_id || documentId,
       user_id: user_id || bodyUserId || userId,
       page_number: page_number ?? pageNumber,
@@ -190,12 +217,25 @@ export async function POST(request: NextRequest) {
     };
 
     // Validate required fields
-    if (!normalizedData.document_id || normalizedData.page_number == null || !normalizedData.annotation_type || normalizedData.content == null) {
-      return NextResponse.json({ error: "Missing required fields (document_id, page_number, annotation_type, content)" }, { status: 400 });
+    if (
+      !normalizedData.document_id ||
+      normalizedData.page_number == null ||
+      !normalizedData.annotation_type ||
+      normalizedData.content == null
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing required fields (document_id, page_number, annotation_type, content)",
+        },
+        { status: 400 }
+      );
     }
 
     // Get next sequence number for this document
-    const sequenceNumber = await getNextSequenceNumber(normalizedData.document_id);
+    const sequenceNumber = await getNextSequenceNumber(
+      normalizedData.document_id
+    );
 
     // Format dates for MySQL-compatible DATETIME/TIMESTAMP columns
     const now = new Date();
@@ -228,7 +268,13 @@ export async function POST(request: NextRequest) {
     } catch (dbError) {
       console.error("DB insert error:", dbError, params);
       // Return DB error detail to help debugging (remove detail in production)
-      return NextResponse.json({ error: "Database error inserting annotation", detail: String((dbError as any)?.message ?? dbError) }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Database error inserting annotation",
+          detail: String((dbError as any)?.message ?? dbError),
+        },
+        { status: 500 }
+      );
     }
 
     // Return the created annotation with user info
@@ -252,7 +298,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ annotation: newAnnotation }, { status: 201 });
   } catch (error) {
     console.error("Error creating annotation:", error);
-    return NextResponse.json({ error: "Failed to create annotation", detail: String((error as any)?.message ?? error) }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Failed to create annotation",
+        detail: String((error as any)?.message ?? error),
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -272,19 +324,28 @@ export async function DELETE(request: NextRequest) {
     const annotationId = searchParams.get("id");
 
     if (!annotationId) {
-      return NextResponse.json({ error: "Annotation ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Annotation ID is required" },
+        { status: 400 }
+      );
     }
 
     // Check if annotation exists and user has permission to delete
     const checkSql = `SELECT user_id FROM annotations WHERE id = ? LIMIT 1`;
-    const checkResult: any = await DatabaseService.query(checkSql, [annotationId]);
+    const checkResult: any = await DatabaseService.query(checkSql, [
+      annotationId,
+    ]);
     const checkRows = normalizeRows(checkResult);
 
     if (!checkRows || checkRows.length === 0) {
-      return NextResponse.json({ error: "Annotation not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Annotation not found" },
+        { status: 404 }
+      );
     }
 
-    const userId = decoded?.userId ?? decoded?.id ?? decoded?.sub ?? decoded?.uid ?? null;
+    const userId =
+      decoded?.userId ?? decoded?.id ?? decoded?.sub ?? decoded?.uid ?? null;
     const annotationUserId = checkRows[0].user_id;
 
     // Only allow users to delete their own annotations (or add admin check here)
@@ -296,9 +357,18 @@ export async function DELETE(request: NextRequest) {
     const deleteSql = `DELETE FROM annotations WHERE id = ?`;
     await DatabaseService.query(deleteSql, [annotationId]);
 
-    return NextResponse.json({ message: "Annotation deleted successfully" }, { status: 200 });
+    return NextResponse.json(
+      { message: "Annotation deleted successfully" },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Error deleting annotation:", error);
-    return NextResponse.json({ error: "Failed to delete annotation", detail: String((error as any)?.message ?? error) }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Failed to delete annotation",
+        detail: String((error as any)?.message ?? error),
+      },
+      { status: 500 }
+    );
   }
 }

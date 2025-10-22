@@ -11,6 +11,8 @@ export interface User {
   created_at: string;
   updated_at: string;
   department_name?: string;
+  /** ✅ Added below line */
+  permissions?: string[]; // Optional permissions array
 }
 
 interface AuthContextType {
@@ -37,7 +39,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     checkAuth();
 
-    // Re-check auth when window gains focus
     const handleFocus = () => {
       checkAuth();
     };
@@ -106,7 +107,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (response.ok) {
-        // After signup, automatically sign in
         const signInResult = await signIn(email, password);
         if (signInResult.error) {
           return { error: signInResult.error };
@@ -136,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        profile: user, // compatibility with existing components
+        profile: user,
         loading,
         signIn,
         signUp,

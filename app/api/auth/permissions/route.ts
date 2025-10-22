@@ -14,7 +14,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const permissions = await AuthService.getUserPermissions(decoded.userId);
+    // Use the centralized helper to resolve the canonical userId (string | null)
+    const userId = AuthService.extractUserId(decoded);
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Invalid token: missing user id" },
+        { status: 401 }
+      );
+    }
+
+    const permissions = await AuthService.getUserPermissions(userId);
 
     return NextResponse.json({ permissions });
   } catch (error) {

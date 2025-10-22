@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Document, Page, pdfjs } from "react-pdf";
-import fabric from "fabric";
+// permissive import and runtime-detect to support different fabric module shapes
+import * as Fabric from "fabric";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+/* ------------------------------- Types ------------------------------- */
 interface Annotation {
   id: string;
   document_id: string;
@@ -39,20 +41,23 @@ interface Annotation {
   position_x: number;
   position_y: number;
   created_at: string;
-  user?: { full_name: string };
+  user?: { full_name?: string };
+  // fallback field sometimes returned by API
+  user_name?: string;
 }
 
-interface Document {
+interface DocumentData {
   id: string;
   title: string;
   file_url: string;
 }
 
 interface PdfViewerProps {
-  document: Document;
+  document: DocumentData;
   onClose: () => void;
 }
 
+/* --------------------------- Component --------------------------- */
 export function PdfViewer({ document, onClose }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -67,36 +72,65 @@ export function PdfViewer({ document, onClose }: PdfViewerProps) {
     x: number;
     y: number;
   } | null>(null);
-  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+
+  // canvas typed as any to avoid strict dependency on fabric types
+  const [canvas, setCanvas] = useState<any | null>(null);
   const [nextSequenceNumber, setNextSequenceNumber] = useState(1);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
 
+  // runtime-detected fabric object (works whether fabric exports { fabric } or default-ish)
+  const fabricLib: any = (Fabric as any).fabric ?? Fabric;
+
   useEffect(() => {
     fetchAnnotations();
+    // intentionally only when document id or page changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document.id, currentPage]);
 
   useEffect(() => {
+    // initialize fabric drawing canvas only when draw tool is selected
     if (selectedTool === "draw" && canvasRef.current && !canvas) {
-      const fabricCanvas = new fabric.Canvas(canvasRef.current, {
-        width: 800,
-        height: 600,
-        isDrawingMode: true,
-      });
+      try {
+        const fabricCanvas = new fabricLib.Canvas(canvasRef.current, {
+          width: 800,
+          height: 600,
+          isDrawingMode: true,
+        });
 
-      fabricCanvas.freeDrawingBrush.width = 2;
-      fabricCanvas.freeDrawingBrush.color = "#3B82F6";
+        if (fabricCanvas.freeDrawingBrush) {
+          fabricCanvas.freeDrawingBrush.width = 2;
+          fabricCanvas.freeDrawingBrush.color = "#3B82F6";
+        }
 
-      setCanvas(fabricCanvas);
+        setCanvas(fabricCanvas);
 
-      return () => {
-        fabricCanvas.dispose();
-        setCanvas(null);
-      };
+        return () => {
+          try {
+            fabricCanvas.dispose && fabricCanvas.dispose();
+          } catch (e) {
+            /* ignore dispose errors */
+          }
+          setCanvas(null);
+        };
+      } catch (err) {
+        console.error("Failed to initialize fabric canvas:", err);
+      }
     }
-  }, [selectedTool, canvas]);
+
+    // if switched away from draw tool, cleanup
+    if (selectedTool !== "draw" && canvas) {
+      try {
+        canvas.dispose && canvas.dispose();
+      } catch (e) {
+        /* ignore */
+      }
+      setCanvas(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTool, canvasRef.current]);
 
   const fetchAnnotations = async () => {
     try {
@@ -105,10 +139,10 @@ export function PdfViewer({ document, onClose }: PdfViewerProps) {
       );
       if (response.ok) {
         const { annotations } = await response.json();
-        setAnnotations(annotations);
+        setAnnotations(annotations || []);
         const maxSeq = Math.max(
           0,
-          ...annotations.map((a: Annotation) => a.sequence_number)
+          ...(annotations || []).map((a: Annotation) => a.sequence_number || 0)
         );
         setNextSequenceNumber(maxSeq + 1);
       }
@@ -154,7 +188,7 @@ export function PdfViewer({ document, onClose }: PdfViewerProps) {
         setSelectedTool("view");
         fetchAnnotations();
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to save annotation");
       }
     } catch (error) {
@@ -168,7 +202,8 @@ export function PdfViewer({ document, onClose }: PdfViewerProps) {
   const saveDrawing = async () => {
     if (!canvas || !profile) return;
 
-    const drawingData = canvas.toJSON();
+    const drawingData =
+      typeof canvas.toJSON === "function" ? canvas.toJSON() : null;
 
     try {
       const response = await fetch("/api/annotations", {
@@ -187,11 +222,15 @@ export function PdfViewer({ document, onClose }: PdfViewerProps) {
 
       if (response.ok) {
         toast.success("Drawing saved successfully");
-        canvas.clear();
+        try {
+          canvas.clear && canvas.clear();
+        } catch (e) {
+          /* ignore clear errors */
+        }
         setSelectedTool("view");
         fetchAnnotations();
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to save drawing");
       }
     } catch (error) {
@@ -353,10 +392,10 @@ export function PdfViewer({ document, onClose }: PdfViewerProps) {
                         #{annotation.sequence_number}
                       </Badge>
                       <span className="text-xs text-gray-600">
-                        {annotation.user?.full_name}
+                        {annotation.user?.full_name || annotation.user_name}
                       </span>
                     </div>
-                    <p className="text-sm">{annotation.content.text}</p>
+                    <p className="text-sm">{annotation.content?.text}</p>
                   </div>
                 ))}
 
@@ -438,10 +477,10 @@ export function PdfViewer({ document, onClose }: PdfViewerProps) {
                     </span>
                   </div>
                   {annotation.annotation_type === "sticky_note" && (
-                    <p className="text-sm mb-2">{annotation.content.text}</p>
+                    <p className="text-sm mb-2">{annotation.content?.text}</p>
                   )}
                   <p className="text-xs text-gray-500">
-                    by {annotation.user_name}
+                    by {annotation.user?.full_name || annotation.user_name}
                   </p>
                 </Card>
               ))

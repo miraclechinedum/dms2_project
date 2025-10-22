@@ -1,295 +1,170 @@
-// app/api/notifications/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from "next/server";
 import { DatabaseService } from "@/lib/database";
 import { AuthService } from "@/lib/auth";
 
-export async function GET(request: NextRequest) {
+/* -------------------------------------------------------------------------- */
+/*                                Helper Utils                                */
+/* -------------------------------------------------------------------------- */
+function normalizeRows(result: any): any[] {
+  if (!result) return [];
+  if (Array.isArray(result) && Array.isArray(result[0])) return result[0];
+  if (Array.isArray(result)) return result;
+  return [];
+}
+
+async function authenticate(req: NextRequest) {
+  const cookieToken = req.cookies.get("auth-token")?.value ?? null;
+  const header = req.headers.get("authorization") ?? "";
+  const headerToken = header?.replace(/^Bearer\s+/i, "") || null;
+  const token = cookieToken || headerToken;
+  if (!token) return null;
   try {
-    console.log("🔔 [NOTIFICATIONS API FIXED] Starting notifications fetch");
+    return await Promise.resolve(AuthService.verifyToken(token));
+  } catch {
+    return null;
+  }
+}
 
-    const token = request.cookies.get("auth-token")?.value ?? null;
-    console.log("🔔 [NOTIFICATIONS API FIXED] Token exists:", !!token);
-
-    if (!token) {
+/* -------------------------------------------------------------------------- */
+/*                               GET NOTIFICATIONS                            */
+/* -------------------------------------------------------------------------- */
+export async function GET(req: NextRequest) {
+  try {
+    const decoded = await authenticate(req);
+    if (!decoded)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const decoded = await AuthService.verifyToken(token);
-    console.log("🔔 [NOTIFICATIONS API FIXED] Token decoded:", decoded);
-
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-    }
 
     const userId =
       decoded?.userId ?? decoded?.id ?? decoded?.sub ?? decoded?.uid ?? null;
+    if (!userId)
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
 
-    console.log("🔔 [NOTIFICATIONS API FIXED] Extracted userId:", userId);
+    // Get notifications for this user
+    const sql = `
+      SELECT n.id, n.message, n.status, n.type, n.created_at, 
+             n.related_document_id, n.sender_id
+      FROM notifications n
+      WHERE n.recipient_id = ?
+      ORDER BY n.created_at DESC
+      LIMIT 100
+    `;
+    const result = await DatabaseService.query(sql, [userId]);
+    const rows = normalizeRows(result);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid token payload - no user ID" },
-        { status: 401 }
-      );
-    }
+    const enriched = [];
+    for (const row of rows) {
+      let document_title = null;
+      let sender_name = null;
 
-    const url = new URL(request.url);
-    const limit = parseInt(url.searchParams.get("limit") || "5");
-    const offset = parseInt(url.searchParams.get("offset") || "0");
-    const unreadOnly = url.searchParams.get("unreadOnly") === "true";
-
-    console.log("🔔 [NOTIFICATIONS API FIXED] Query params:", {
-      limit,
-      offset,
-      unreadOnly,
-    });
-
-    // FIX: Use separate queries instead of parameterized LIMIT/OFFSET
-    // This avoids the MySQL prepared statement parameter binding issue
-
-    let sql: string;
-    let params: any[];
-
-    if (unreadOnly) {
-      sql = `SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
-      params = [userId];
-    } else {
-      sql = `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
-      params = [userId];
-    }
-
-    console.log("🔔 [NOTIFICATIONS API FIXED] Final SQL:", sql);
-    console.log("🔔 [NOTIFICATIONS API FIXED] Final params:", params);
-
-    // Test the query with simple parameters first
-    try {
-      const testResult = await DatabaseService.query(
-        "SELECT COUNT(*) as total FROM notifications WHERE user_id = ?",
-        [userId]
-      );
-      console.log(
-        "🔔 [NOTIFICATIONS API FIXED] Test query result:",
-        testResult
-      );
-    } catch (testError) {
-      console.error(
-        "🔔 [NOTIFICATIONS API FIXED] Test query failed:",
-        testError
-      );
-    }
-
-    // Execute main query
-    const result = await DatabaseService.query(sql, params);
-    console.log(
-      "🔔 [NOTIFICATIONS API FIXED] Main query result type:",
-      typeof result
-    );
-
-    let rows: any[] = [];
-
-    // Handle different database response structures
-    if (Array.isArray(result)) {
-      if (result.length > 0 && Array.isArray(result[0])) {
-        rows = result[0]; // MySQL2 format [rows, fields]
-      } else {
-        rows = result; // Direct rows array
+      if (row.related_document_id) {
+        const docResult: any = await DatabaseService.query(
+          "SELECT title FROM documents WHERE id = ?",
+          [row.related_document_id]
+        );
+        const docRows = Array.isArray(docResult)
+          ? Array.isArray(docResult[0])
+            ? docResult[0]
+            : docResult
+          : [];
+        if (docRows?.[0]?.title) {
+          document_title = docRows[0].title;
+        }
       }
-    } else if (result && typeof result === "object") {
-      // Single row object or other structure
-      rows = [result];
+
+      if (row.sender_id) {
+        const userResult: any = await DatabaseService.query(
+          "SELECT name FROM users WHERE id = ?",
+          [row.sender_id]
+        );
+        const userRows = Array.isArray(userResult)
+          ? Array.isArray(userResult[0])
+            ? userResult[0]
+            : userResult
+          : [];
+        if (userRows?.[0]?.name) {
+          sender_name = userRows[0].name;
+        }
+      }
+
+      enriched.push({
+        ...row,
+        document_title,
+        sender_name,
+      });
     }
 
-    console.log(
-      "🔔 [NOTIFICATIONS API FIXED] Processed rows count:",
-      rows.length
-    );
-
-    // Get unread count with simple parameter
-    const countResult = await DatabaseService.query(
-      "SELECT COUNT(*) as unread_count FROM notifications WHERE user_id = ? AND is_read = 0",
-      [userId]
-    );
-
-    let unreadCount = 0;
-    if (Array.isArray(countResult)) {
-      const countRows = Array.isArray(countResult[0])
-        ? countResult[0]
-        : countResult;
-      unreadCount = countRows[0]?.unread_count || 0;
-    } else if (countResult && countResult.unread_count !== undefined) {
-      unreadCount = countResult.unread_count;
-    }
-
-    console.log("🔔 [NOTIFICATIONS API FIXED] Unread count:", unreadCount);
-
-    // Process notifications
-    const notifications = await Promise.all(
-      rows.map(async (row) => {
-        let document_title = null;
-        let sender_name = null;
-
-        if (row.related_document_id) {
-          try {
-            const docResult = await DatabaseService.query(
-              "SELECT title FROM documents WHERE id = ?",
-              [row.related_document_id]
-            );
-
-            let docRows: any[] = [];
-            if (Array.isArray(docResult)) {
-              docRows = Array.isArray(docResult[0]) ? docResult[0] : docResult;
-            }
-
-            if (docRows.length > 0 && docRows[0].title) {
-              document_title = docRows[0].title;
-            }
-          } catch (err) {
-            console.error("Error fetching document title:", err);
-          }
-        }
-
-        if (row.sender_id) {
-          try {
-            const userResult = await DatabaseService.query(
-              "SELECT name FROM users WHERE id = ?",
-              [row.sender_id]
-            );
-
-            let userRows: any[] = [];
-            if (Array.isArray(userResult)) {
-              userRows = Array.isArray(userResult[0])
-                ? userResult[0]
-                : userResult;
-            }
-
-            if (userRows.length > 0 && userRows[0].name) {
-              sender_name = userRows[0].name;
-            }
-          } catch (err) {
-            console.error("Error fetching sender name:", err);
-          }
-        }
-
-        return {
-          id: row.id,
-          user_id: row.user_id,
-          type: row.type,
-          message: row.message,
-          related_document_id: row.related_document_id,
-          document_title,
-          sender_name,
-          is_read: Boolean(row.is_read),
-          created_at: row.created_at,
-        };
-      })
-    );
-
-    console.log(
-      "🔔 [NOTIFICATIONS API FIXED] Final notifications count:",
-      notifications.length
-    );
-
+    return NextResponse.json(enriched, { status: 200 });
+  } catch (err) {
+    console.error("GET notifications error:", err);
     return NextResponse.json(
-      {
-        notifications,
-        unread_count: unreadCount,
-      },
-      { status: 200 }
-    );
-  } catch (err: any) {
-    console.error(
-      "❌ [NOTIFICATIONS API FIXED] Fetch notifications error:",
-      err
-    );
-    console.error("❌ [NOTIFICATIONS API FIXED] Error name:", err.name);
-    console.error("❌ [NOTIFICATIONS API FIXED] Error message:", err.message);
-
-    // More detailed error information
-    if (err.code)
-      console.error("❌ [NOTIFICATIONS API FIXED] Error code:", err.code);
-    if (err.errno)
-      console.error("❌ [NOTIFICATIONS API FIXED] Error errno:", err.errno);
-    if (err.sqlState)
-      console.error(
-        "❌ [NOTIFICATIONS API FIXED] Error sqlState:",
-        err.sqlState
-      );
-    if (err.sqlMessage)
-      console.error(
-        "❌ [NOTIFICATIONS API FIXED] Error sqlMessage:",
-        err.sqlMessage
-      );
-    if (err.sql)
-      console.error("❌ [NOTIFICATIONS API FIXED] Error sql:", err.sql);
-
-    return NextResponse.json(
-      {
-        error: "Failed to fetch notifications",
-        details: err.sqlMessage || err.message,
-      },
+      { error: "Failed to fetch notifications" },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextRequest) {
+/* -------------------------------------------------------------------------- */
+/*                                UPDATE STATUS                               */
+/* -------------------------------------------------------------------------- */
+export async function PATCH(req: NextRequest) {
   try {
-    console.log("🔔 [NOTIFICATIONS API FIXED] Creating new notification");
-
-    const token = request.cookies.get("auth-token")?.value ?? null;
-    if (!token) {
+    const decoded = await authenticate(req);
+    if (!decoded)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
-    const decoded = await AuthService.verifyToken(token);
-    if (!decoded) {
+    const userId =
+      decoded?.userId ?? decoded?.id ?? decoded?.sub ?? decoded?.uid ?? null;
+    if (!userId)
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-    }
 
-    const body = await request.json();
-    console.log("🔔 [NOTIFICATIONS API FIXED] Request body:", body);
+    const body = await req.json();
+    const { ids, status } = body;
 
-    const { type, message, related_document_id, recipient_user_id, sender_id } =
-      body;
+    if (!Array.isArray(ids) || !status)
+      return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-    if (!type || !message || !recipient_user_id) {
-      return NextResponse.json(
-        { error: "type, message, and recipient_user_id are required" },
-        { status: 400 }
-      );
-    }
-
-    // Use template literals for non-user parameters to avoid binding issues
-    const sql = `
-      INSERT INTO notifications (id, user_id, type, message, related_document_id, sender_id, is_read, created_at)
-      VALUES (UUID(), ?, ?, ?, ?, ?, 0, NOW())
-    `;
-
-    const params = [
-      String(recipient_user_id),
-      String(type),
-      String(message),
-      related_document_id ? String(related_document_id) : null,
-      sender_id ? String(sender_id) : null,
-    ];
-
-    console.log("🔔 [NOTIFICATIONS API FIXED] Insert params:", params);
-
-    await DatabaseService.query(sql, params);
+    const placeholders = ids.map(() => "?").join(",");
+    const sql = `UPDATE notifications SET status = ? WHERE id IN (${placeholders}) AND recipient_id = ?`;
+    await DatabaseService.query(sql, [status, ...ids, userId]);
 
     return NextResponse.json(
-      { message: "Notification created" },
-      { status: 201 }
+      { message: "Updated successfully" },
+      { status: 200 }
     );
-  } catch (err: any) {
-    console.error(
-      "❌ [NOTIFICATIONS API FIXED] Create notification error:",
-      err
-    );
+  } catch (err) {
+    console.error("PATCH notifications error:", err);
     return NextResponse.json(
-      {
-        error: err.sqlMessage || err.message || "Failed to create notification",
-      },
+      { error: "Failed to update notifications" },
+      { status: 500 }
+    );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                DELETE OLD                                  */
+/* -------------------------------------------------------------------------- */
+export async function DELETE(req: NextRequest) {
+  try {
+    const decoded = await authenticate(req);
+    if (!decoded)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId =
+      decoded?.userId ?? decoded?.id ?? decoded?.sub ?? decoded?.uid ?? null;
+    if (!userId)
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+
+    const sql = `DELETE FROM notifications WHERE recipient_id = ? AND status = 'read'`;
+    await DatabaseService.query(sql, [userId]);
+
+    return NextResponse.json(
+      { message: "Read notifications cleared" },
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error("DELETE notifications error:", err);
+    return NextResponse.json(
+      { error: "Failed to delete notifications" },
       { status: 500 }
     );
   }

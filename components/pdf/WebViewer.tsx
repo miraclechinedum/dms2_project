@@ -55,9 +55,10 @@ export default function WebViewerComponent({
     () => `webviewer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   );
 
-  // Calculate if current user can annotate
-  const canAnnotate =
-    assignedToUserId && String(currentUserId) === String(assignedToUserId);
+  // --- IMPORTANT FIX: make canAnnotate strictly boolean
+  const canAnnotate: boolean =
+    Boolean(assignedToUserId) &&
+    String(currentUserId) === String(assignedToUserId);
 
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -392,13 +393,15 @@ export default function WebViewerComponent({
         licenseKey:
           "demo:1757509875851:604eca4e0300000000877d781419f71633c68ea80c20ad3325f5806b42",
         disabledElements: disabledElements,
-        enableAnnotationTools: canAnnotate,
+        // <-- correct option name
+        enableAnnotations: canAnnotate,
         enableFilePicker: false,
         enableMeasurement: canAnnotate,
         enableRedaction: canAnnotate,
         fullAPI: true,
+        // css must be string | undefined — never boolean
         css: canAnnotate
-          ? ""
+          ? undefined
           : ".ToolsHeader, .ribbons { display: none !important; }",
       },
       viewer.current
@@ -639,6 +642,7 @@ export default function WebViewerComponent({
   useEffect(() => {
     if (!viewerReady) return;
     loadExistingAnnotations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewerReady, JSON.stringify(existingAnnotations || [])]);
 
   const loadExistingAnnotations = async () => {
@@ -1082,7 +1086,6 @@ export default function WebViewerComponent({
         className="flex-1 w-full"
         key={`webviewer-container-${instanceId}`}
       />
-      {/* <div style={{ position: "absolute", top: 12, right: 12, zIndex: 9999 }}> */}
       <div>
         {toasts.map((t) => (
           <div

@@ -1,7 +1,7 @@
 // app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { AuthForm } from "@/components/auth/auth-form";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -27,7 +27,7 @@ export default function Home() {
   );
   const { user, profile, loading } = useAuth();
 
-  // Add dashboard redirect
+  // If logged in, redirect to dashboard component (existing app behavior)
   if (user && profile) {
     return <DashboardRedirect />;
   }
@@ -64,10 +64,28 @@ export default function Home() {
     );
   }
 
+  // Wrapper to normalize any incoming document from DocumentList into our Document shape
+  const handleDocumentSelect = (incoming: any) => {
+    if (!incoming) {
+      setSelectedDocument(null);
+      return;
+    }
+
+    // Ensure file_url exists as a string (fallback to empty string if absent)
+    const normalized: Document = {
+      id: String(incoming.id),
+      title: String(incoming.title ?? ""),
+      file_url: String(incoming.file_url ?? incoming.file_url ?? ""),
+    };
+
+    setSelectedDocument(normalized);
+  };
+
   const renderActiveView = () => {
     switch (activeView) {
       case "documents":
-        return <DocumentList onDocumentSelect={setSelectedDocument} />;
+        // pass wrapper instead of setSelectedDocument directly to satisfy types
+        return <DocumentList onDocumentSelect={handleDocumentSelect} />;
       case "upload":
         return <DocumentUpload />;
       case "users":
@@ -88,13 +106,16 @@ export default function Home() {
           </div>
         );
       default:
-        return <DocumentList onDocumentSelect={setSelectedDocument} />;
+        return <DocumentList onDocumentSelect={handleDocumentSelect} />;
     }
   };
 
+  // Cast Sidebar to any at usage point to avoid prop type mismatch errors
+  const SidebarAny = Sidebar as any;
+
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <SidebarAny activeView={activeView} onViewChange={setActiveView} />
       <main className="flex-1 overflow-auto">{renderActiveView()}</main>
       <Toaster position="top-right" />
     </div>

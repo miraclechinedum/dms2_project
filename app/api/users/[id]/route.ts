@@ -1,4 +1,3 @@
-// app/api/users/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { DatabaseService } from "@/lib/database";
 import { AuthService } from "@/lib/auth";
@@ -29,10 +28,11 @@ export async function PUT(
     }
 
     // 1. Get the user's current department and role
-    const [existingUser] = await DatabaseService.query(
+    const [existingUserResult]: any = await DatabaseService.query(
       `SELECT department_id, role_id FROM users WHERE id = ?`,
       [params.id]
     );
+    const existingUser = existingUserResult?.[0];
 
     if (!existingUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -53,24 +53,16 @@ export async function PUT(
 
     // 3. Update user permissions if provided
     if (permissions && Array.isArray(permissions)) {
-      // Delete existing user permissions
       await DatabaseService.query(
         "DELETE FROM user_permissions WHERE user_id = ?",
         [params.id]
       );
 
-      // Insert new user permissions if any are selected
       if (permissions.length > 0) {
-        const permissionValues = permissions.map((permissionId: string) => [
-          params.id,
-          permissionId,
-        ]);
-
-        // Use individual inserts for better error handling
-        for (const [userId, permissionId] of permissionValues) {
+        for (const permissionId of permissions) {
           await DatabaseService.query(
             "INSERT INTO user_permissions (user_id, permission_id) VALUES (?, ?)",
-            [userId, permissionId]
+            [params.id, permissionId]
           );
         }
       }
@@ -88,9 +80,7 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json({
-      message: "User updated successfully",
-    });
+    return NextResponse.json({ message: "User updated successfully" });
   } catch (error) {
     console.error("Update user error:", error);
     return NextResponse.json(
@@ -115,8 +105,8 @@ export async function GET(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // Get user details with department and role info
-    const [user] = await DatabaseService.query(
+    // Get user details
+    const [userResult]: any = await DatabaseService.query(
       `
       SELECT 
         u.id, 
@@ -133,13 +123,14 @@ export async function GET(
       `,
       [params.id]
     );
+    const user = userResult?.[0];
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     // Get user's custom permissions
-    const userPermissions = await DatabaseService.query(
+    const [permissionsResult]: any = await DatabaseService.query(
       `
       SELECT p.id, p.name, p.description, p.category
       FROM permissions p
@@ -153,7 +144,7 @@ export async function GET(
     return NextResponse.json({
       user: {
         ...user,
-        permissions: userPermissions.map((p: any) => p.id), // Return just the permission IDs for the form
+        permissions: permissionsResult.map((p: any) => p.id),
       },
     });
   } catch (error) {
@@ -180,33 +171,27 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // Get user's department before deletion to update people_count
-    const [user] = await DatabaseService.query(
+    // Get user's department before deletion
+    const [userResult]: any = await DatabaseService.query(
       "SELECT department_id FROM users WHERE id = ?",
       [params.id]
     );
+    const user = userResult?.[0];
 
     if (user) {
-      // Decrement people_count in the department
       await DatabaseService.query(
         "UPDATE departments SET people_count = people_count - 1 WHERE id = ?",
         [user.department_id]
       );
     }
 
-    // Delete user permissions first (to maintain referential integrity)
     await DatabaseService.query(
       "DELETE FROM user_permissions WHERE user_id = ?",
       [params.id]
     );
+    await DatabaseService.query("DELETE FROM users WHERE id = ?", [params.id]);
 
-    // Then delete the user
-    const sql = "DELETE FROM users WHERE id = ?";
-    await DatabaseService.query(sql, [params.id]);
-
-    return NextResponse.json({
-      message: "User deleted successfully",
-    });
+    return NextResponse.json({ message: "User deleted successfully" });
   } catch (error) {
     console.error("Delete user error:", error);
     return NextResponse.json(

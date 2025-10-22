@@ -162,7 +162,7 @@ export function UserManagement() {
                         <p className="text-sm text-gray-600">{user.email}</p>
                         {user.department && (
                           <p className="text-xs text-gray-500">
-                            {user.department_name} Department
+                            {user.department?.name} Department
                           </p>
                         )}
                       </div>

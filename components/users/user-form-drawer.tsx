@@ -1,4 +1,3 @@
-// components/users/user-form-drawer.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -121,6 +120,7 @@ export function UserFormDrawer({
       setFilteredRoles([]);
       setRoleId("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departmentId]);
 
   // Fetch roles by department
@@ -128,17 +128,18 @@ export function UserFormDrawer({
     try {
       console.log("Fetching roles for department:", deptId);
       const response = await fetch(
-        `/api/roles/by-department?departmentId=${deptId}`
+        `/api/roles/by-department?departmentId=${encodeURIComponent(deptId)}`
       );
       if (response.ok) {
-        const { roles } = await response.json();
+        const json = await response.json();
+        const roles: Role[] = (json?.roles as Role[]) || [];
         console.log("Roles for department:", roles);
 
-        // Use all roles without filtering out Super Admin
+        // Use all roles returned by API
         setFilteredRoles(roles);
 
         // If current role is not in the filtered list, clear it
-        if (roleId && !roles.some((role) => role.id === roleId)) {
+        if (roleId && !roles.some((r: Role) => r.id === roleId)) {
           setRoleId("");
         }
       } else {
@@ -154,7 +155,7 @@ export function UserFormDrawer({
   // Fetch user permissions when editing
   const fetchUserPermissions = async (userId: string) => {
     try {
-      const response = await fetch(`/api/users/${userId}`);
+      const response = await fetch(`/api/users/${encodeURIComponent(userId)}`);
       if (response.ok) {
         const { user: userData } = await response.json();
         setSelectedPermissions(userData.permissions || []);
@@ -178,14 +179,16 @@ export function UserFormDrawer({
         fetchRolePermissions(roleId);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleId, isEditing, hasLoadedUserPermissions]);
 
   const fetchDepartments = async () => {
     try {
       const response = await fetch("/api/departments");
       if (response.ok) {
-        const { departments } = await response.json();
-        setDepartments(departments);
+        const json = await response.json();
+        const deps: Department[] = (json?.departments as Department[]) || [];
+        setDepartments(deps);
       }
     } catch (error) {
       console.error("Failed to fetch departments:", error);
@@ -196,7 +199,8 @@ export function UserFormDrawer({
     try {
       const response = await fetch("/api/roles");
       if (response.ok) {
-        const { roles } = await response.json();
+        const json = await response.json();
+        const roles: Role[] = (json?.roles as Role[]) || [];
         // Use all roles without filtering out Super Admin
         setAllRoles(roles);
       }
@@ -210,8 +214,9 @@ export function UserFormDrawer({
     try {
       const response = await fetch("/api/permissions");
       if (response.ok) {
-        const { permissions } = await response.json();
-        setPermissions(permissions || []);
+        const json = await response.json();
+        const perms: Permission[] = (json?.permissions as Permission[]) || [];
+        setPermissions(perms);
       }
     } catch (error) {
       console.error("Failed to fetch permissions:", error);
@@ -222,12 +227,15 @@ export function UserFormDrawer({
 
   const fetchRolePermissions = async (roleId: string) => {
     try {
-      const response = await fetch(`/api/roles/${roleId}/permissions`);
+      const response = await fetch(
+        `/api/roles/${encodeURIComponent(roleId)}/permissions`
+      );
       if (response.ok) {
-        const { permissions } = await response.json();
+        const json = await response.json();
+        const perms: Permission[] = (json?.permissions as Permission[]) || [];
         // Only set role permissions if we're not editing or if no custom permissions exist
         if (!isEditing || selectedPermissions.length === 0) {
-          setSelectedPermissions(permissions.map((p: Permission) => p.id));
+          setSelectedPermissions(perms.map((p) => p.id));
         }
       }
     } catch (error) {
@@ -282,7 +290,7 @@ export function UserFormDrawer({
     setIsLoading(true);
 
     try {
-      const url = isEditing ? `/api/users/${user.id}` : "/api/users";
+      const url = isEditing ? `/api/users/${user?.id}` : "/api/users";
 
       const method = isEditing ? "PUT" : "POST";
 

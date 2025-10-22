@@ -123,7 +123,8 @@ export default function DocumentViewerPage() {
   const router = useRouter();
   const { user: currentUser } = useAuth();
 
-  const [document, setDocument] = useState<DocumentData | null>(null);
+  // renamed from `document` -> `doc` to avoid shadowing the global `document`
+  const [doc, setDoc] = useState<DocumentData | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [assignmentHistory, setAssignmentHistory] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,18 +169,18 @@ export default function DocumentViewerPage() {
 
   // Debug logging
   useEffect(() => {
-    if (document && currentUser) {
+    if (doc && currentUser) {
       console.log("🔍 [DEBUG] Assignment Check:");
       console.log("Current user ID:", currentUser.id, typeof currentUser.id);
       console.log(
         "Document assigned_to_user:",
-        document.assigned_to_user,
-        typeof document.assigned_to_user
+        doc.assigned_to_user,
+        typeof doc.assigned_to_user
       );
       console.log("Assignment history count:", assignmentHistory.length);
       console.log("isAssignedUser result:", isAssignedUser);
     }
-  }, [document, currentUser, isAssignedUser, assignmentHistory]);
+  }, [doc, currentUser, isAssignedUser, assignmentHistory]);
 
   // Fetch document metadata
   useEffect(() => {
@@ -193,14 +194,14 @@ export default function DocumentViewerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, params.id]);
 
-  // Fetch annotations and assignment history when document changes
+  // Fetch annotations and assignment history when doc changes
   useEffect(() => {
-    if (document) {
+    if (doc) {
       fetchAnnotations();
       fetchAssignmentHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document]);
+  }, [doc]);
 
   // Filter users based on search query
   useEffect(() => {
@@ -227,19 +228,21 @@ export default function DocumentViewerPage() {
         router.push("/documents");
         return;
       }
-      const { document } = await res.json();
 
-      let fileUrl = document.file_url;
-      if (!fileUrl && document.file_path) {
-        fileUrl = document.file_path.startsWith("/")
-          ? document.file_path
-          : `/uploads/documents/${document.file_path}`;
+      // rename API's `document` to `docFromApi` to avoid local name collision
+      const { document: docFromApi } = await res.json();
+
+      let fileUrl = docFromApi.file_url;
+      if (!fileUrl && docFromApi.file_path) {
+        fileUrl = docFromApi.file_path.startsWith("/")
+          ? docFromApi.file_path
+          : `/uploads/documents/${docFromApi.file_path}`;
       }
       if (fileUrl && !fileUrl.startsWith("http") && !fileUrl.startsWith("/")) {
         fileUrl = `/uploads/documents/${fileUrl}`;
       }
 
-      setDocument({ ...document, file_url: fileUrl });
+      setDoc({ ...docFromApi, file_url: fileUrl });
     } catch (err) {
       console.error("fetchDocument error", err);
       toast.error("Failed to load document");
@@ -249,17 +252,15 @@ export default function DocumentViewerPage() {
   };
 
   const fetchAssignmentHistory = async () => {
-    if (!document) return;
+    if (!doc) return;
     try {
       console.log(
         "📋 [FRONTEND] Fetching assignment history for document:",
-        document.id
+        doc.id
       );
 
       const res = await fetch(
-        `/api/document_assignments?documentId=${encodeURIComponent(
-          document.id
-        )}`
+        `/api/document_assignments?documentId=${encodeURIComponent(doc.id)}`
       );
 
       console.log(
@@ -290,9 +291,9 @@ export default function DocumentViewerPage() {
   };
 
   const fetchAnnotations = async () => {
-    if (!document) return;
+    if (!doc) return;
     try {
-      const res = await fetch(`/api/annotations?documentId=${document.id}`);
+      const res = await fetch(`/api/annotations?documentId=${doc.id}`);
       if (!res.ok) {
         console.error("Failed to fetch annotations:", res.status);
         return;
@@ -320,10 +321,8 @@ export default function DocumentViewerPage() {
   };
 
   // Export document with annotations
-  // Replace the existing handleExport function with this:
-  // Replace the existing handleExport function with this:
   const handleExport = async () => {
-    if (!document) return;
+    if (!doc) return;
 
     setExporting(true);
     try {
@@ -338,9 +337,9 @@ export default function DocumentViewerPage() {
         console.warn(
           "WebViewer export not available, falling back to original download"
         );
-        const link = document.createElement("a");
-        link.href = document.file_url || document.file_path;
-        link.download = `document-${document.title}.pdf`;
+        const link = document.createElement("a"); // global DOM document is used here
+        link.href = doc.file_url || doc.file_path;
+        link.download = `document-${doc.title}.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -387,12 +386,12 @@ export default function DocumentViewerPage() {
   }, [assignOpen, currentUser]);
 
   const handleNotify = async () => {
-    if (!document) return;
+    if (!doc) return;
     if (!selectedUser) return toast.error("Select a user to notify");
 
     console.log("🚀 [FRONTEND] Starting assignment process:");
-    console.log("Document ID:", document.id);
-    console.log("Document current assignee:", document.assigned_to_user);
+    console.log("Document ID:", doc.id);
+    console.log("Document current assignee:", doc.assigned_to_user);
     console.log("Current user ID:", currentUser?.id);
     console.log("Selected user ID:", selectedUser);
     console.log("isAssignedUser:", isAssignedUser);
@@ -400,7 +399,7 @@ export default function DocumentViewerPage() {
     setAssignSubmitting(true);
     try {
       const res = await fetch(
-        `/api/documents/${encodeURIComponent(document.id)}/assign`,
+        `/api/documents/${encodeURIComponent(doc.id)}/assign`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -457,6 +456,11 @@ export default function DocumentViewerPage() {
   const pageStart = (currentPage - 1) * perPage;
   const pageItems = assignmentHistory.slice(pageStart, pageStart + perPage);
 
+  // Log pageItems when they change (avoids putting console.log inside JSX)
+  useEffect(() => {
+    console.log("📋 [RENDER] Current pageItems:", pageItems);
+  }, [pageItems]);
+
   const handleJumpToPage = () => {
     const n = parseInt(jumpPageInput, 10);
     if (Number.isNaN(n)) return;
@@ -496,7 +500,7 @@ export default function DocumentViewerPage() {
     );
   }
 
-  if (!document) {
+  if (!doc) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="flex h-screen">
@@ -518,6 +522,12 @@ export default function DocumentViewerPage() {
     );
   }
 
+  // ensure assignedToUserId is string | undefined (not null)
+  const assignedToUserId: string | undefined =
+    assignmentHistory.length > 0
+      ? assignmentHistory[0].assigned_to ?? undefined
+      : undefined;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
@@ -534,10 +544,10 @@ export default function DocumentViewerPage() {
                 Back to Documents
               </Button>
               <div>
-                <h1 className="text-xl font-semibold">{document.title}</h1>
+                <h1 className="text-xl font-semibold">{doc.title}</h1>
                 <p className="text-sm text-gray-600">
-                  Uploaded by {document.uploader_name ?? "Unknown"} •{" "}
-                  {formatFileSize(document.file_size)}
+                  Uploaded by {doc.uploader_name ?? "Unknown"} •{" "}
+                  {formatFileSize(doc.file_size)}
                 </p>
               </div>
             </div>
@@ -712,17 +722,13 @@ export default function DocumentViewerPage() {
           <div className="flex-1 flex overflow-auto">
             {/* PDF Viewer with permission control */}
             <div className="flex-1 bg-gray-100">
-              {document.file_url && (
+              {doc.file_url && (
                 <WebViewer
-                  documentUrl={document.file_url}
-                  documentId={document.id}
+                  documentUrl={doc.file_url}
+                  documentId={doc.id}
                   currentUserId={currentUser.id}
                   currentUserName={currentUser.name || currentUser.email}
-                  assignedToUserId={
-                    assignmentHistory.length > 0
-                      ? assignmentHistory[0].assigned_to
-                      : null
-                  }
+                  assignedToUserId={assignedToUserId}
                   onAnnotationSave={
                     isAssignedUser ? handleAnnotationSave : undefined
                   }
@@ -785,7 +791,6 @@ export default function DocumentViewerPage() {
 
               <ScrollArea className="flex-1">
                 <div className="p-4 space-y-3">
-                  {console.log("📋 [RENDER] Current pageItems:", pageItems)}
                   {pageItems.length > 0 ? (
                     pageItems.map((a: Assignment) => {
                       console.log("📋 [RENDER] Rendering assignment:", a);

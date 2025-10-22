@@ -4,6 +4,20 @@ import { DatabaseService } from "@/lib/database";
 import { AuthService } from "@/lib/auth";
 import { randomUUID } from "crypto";
 
+/** Normalize DB return shapes into an array of rows. */
+function normalizeRows(result: any): any[] {
+  if (!result) return [];
+  if (Array.isArray(result) && Array.isArray(result[0])) return result[0];
+  if (Array.isArray(result)) return result;
+  if (typeof result === "object" && result !== null) {
+    if (Array.isArray((result as any).rows)) return (result as any).rows;
+    const maybeArray = Object.values(result);
+    if (maybeArray.length > 0 && Array.isArray(maybeArray[0]))
+      return maybeArray[0];
+  }
+  return [];
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -16,22 +30,14 @@ export async function POST(
 
     console.log("🔐 [AUTH DEBUG] Token found, verifying...");
 
-    const user = await AuthService.verifyToken(token);
-    if (!user) {
+    const decoded = await AuthService.verifyToken(token);
+    if (!decoded) {
       console.log("❌ [AUTH DEBUG] Token verification failed");
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    console.log("✅ [AUTH DEBUG] Token verified successfully");
-    console.log("👤 [AUTH DEBUG] User from token:", {
-      id: user.id,
-      userId: user.userId,
-      type: typeof user.userId,
-      fullUser: user,
-    });
-
-    // USE user.userId INSTEAD OF user.id
-    const currentUserId = user.userId;
+    // Resolve canonical user id (string)
+    const currentUserId = AuthService.extractUserId(decoded);
     if (!currentUserId) {
       console.log("❌ No user ID found in token");
       return NextResponse.json(
@@ -39,6 +45,9 @@ export async function POST(
         { status: 401 }
       );
     }
+
+    console.log("✅ [AUTH DEBUG] Token verified successfully");
+    console.log("👤 [AUTH DEBUG] Resolved userId:", currentUserId);
 
     const documentId = params.id;
     if (!documentId) {
@@ -66,12 +75,12 @@ export async function POST(
     console.log("New assignee ID:", assigned_to, typeof assigned_to);
 
     // Verify document exists and get current assignment
-    const documentCheck = await DatabaseService.query(
+    const documentCheckRaw = await DatabaseService.query(
       "SELECT id, title, assigned_to_user FROM documents WHERE id = ?",
       [documentId]
     );
-
-    if (!documentCheck || documentCheck.length === 0) {
+    const documentRows = normalizeRows(documentCheckRaw);
+    if (documentRows.length === 0) {
       console.log("❌ Document not found");
       return NextResponse.json(
         { error: "Document not found" },
@@ -79,7 +88,7 @@ export async function POST(
       );
     }
 
-    const document = documentCheck[0];
+    const document = documentRows[0];
     const currentAssignee = document?.assigned_to_user;
     const documentTitle = document?.title;
 
@@ -107,8 +116,7 @@ export async function POST(
     console.log("Are they equal?", currentAssigneeStr === userIdStr);
     console.log("Is document unassigned?", !currentAssigneeStr);
 
-    // Permission logic:
-    // Allow if: document is unassigned OR current user is the assignee
+    // Permission logic: Allow if unassigned OR current user is the assignee
     const hasPermission =
       !currentAssigneeStr || currentAssigneeStr === userIdStr;
 
@@ -116,18 +124,8 @@ export async function POST(
 
     if (!hasPermission) {
       console.log("❌ Permission denied: User is not the current assignee");
-      console.log("Current assignee:", JSON.stringify(currentAssigneeStr));
-      console.log("Current user:", JSON.stringify(userIdStr));
-      console.log(
-        "Length comparison - Assignee:",
-        currentAssigneeStr?.length,
-        "User:",
-        userIdStr.length
-      );
       return NextResponse.json(
-        {
-          error: "Only the current assignee can reassign the document",
-        },
+        { error: "Only the current assignee can reassign the document" },
         { status: 403 }
       );
     }
@@ -149,7 +147,6 @@ export async function POST(
       "UPDATE documents SET assigned_to_user = ? WHERE id = ?",
       [assigned_to, documentId]
     );
-
     console.log("Update result:", updateResult);
 
     // Create assignment record
@@ -163,54 +160,44 @@ export async function POST(
         assignmentId,
         documentId,
         assigned_to,
-        currentUserId, // Use currentUserId instead of user.id
+        currentUserId,
         "Reviewer",
         "assigned",
         notify ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
       ]
     );
 
-    // Create notification for the assigned user
+    // Create notification for the assigned user (best-effort)
     try {
       console.log("🔔 Creating notification for assigned user...");
 
       // Get current user's name for the notification message
-      const currentUserResult = await DatabaseService.query(
+      const currentUserResultRaw = await DatabaseService.query(
         "SELECT name FROM users WHERE id = ?",
         [currentUserId]
       );
-
-      let currentUserName = "A user";
-      if (Array.isArray(currentUserResult)) {
-        const rows = Array.isArray(currentUserResult[0])
-          ? currentUserResult[0]
-          : currentUserResult;
-        currentUserName = rows[0]?.name || "A user";
-      }
+      const currentUserRows = normalizeRows(currentUserResultRaw);
+      const currentUserName = (currentUserRows[0]?.name as string) || "A user";
 
       // Get assigned user's details for verification
-      const assignedUserResult = await DatabaseService.query(
+      const assignedUserResultRaw = await DatabaseService.query(
         "SELECT id, name, email FROM users WHERE id = ?",
         [assigned_to]
       );
+      const assignedUserRows = normalizeRows(assignedUserResultRaw);
+      const assignedUserRow = assignedUserRows[0] || null;
 
       let assignedUserName = "the user";
       let assignedUserId = assigned_to;
-
-      if (Array.isArray(assignedUserResult)) {
-        const rows = Array.isArray(assignedUserResult[0])
-          ? assignedUserResult[0]
-          : assignedUserResult;
-        if (rows[0]) {
-          assignedUserName = rows[0].name || "the user";
-          assignedUserId = rows[0].id;
-        }
+      if (assignedUserRow) {
+        assignedUserName = assignedUserRow.name || assignedUserName;
+        assignedUserId = assignedUserRow.id || assignedUserId;
       }
 
       console.log("🔔 Notification details:", {
         currentUserId,
         currentUserName,
-        assignedUserId: assignedUserId,
+        assignedUserId,
         assignedUserName,
         documentTitle,
       });
@@ -227,10 +214,10 @@ export async function POST(
 
       const notificationParams = [
         notificationId,
-        assignedUserId, // Send to the specific assigned user
+        assignedUserId,
         notificationMessage,
         documentId,
-        currentUserId, // Sender is the current user who made the assignment
+        currentUserId,
       ];
 
       console.log("🔔 Creating notification with params:", notificationParams);
@@ -241,12 +228,15 @@ export async function POST(
         `✅ Notification created for user: ${assignedUserName} (ID: ${assignedUserId})`
       );
 
-      // Verify notification was created
-      const verifyNotification = await DatabaseService.query(
+      // Optional verification (debug)
+      const verifyNotificationRaw = await DatabaseService.query(
         "SELECT id, user_id, message FROM notifications WHERE id = ?",
         [notificationId]
       );
-      console.log("🔔 Notification verification:", verifyNotification);
+      console.log(
+        "🔔 Notification verification:",
+        normalizeRows(verifyNotificationRaw)
+      );
     } catch (notifyErr) {
       // Don't fail the assignment if notification fails
       console.error("❌ Failed to create notification:", notifyErr);
@@ -258,9 +248,9 @@ export async function POST(
       });
     }
 
-    // Fetch updated document with user names
+    // Fetch updated document with user names (normalize result)
     console.log("Fetching updated document...");
-    const updatedDocResult = await DatabaseService.query(
+    const updatedDocResultRaw = await DatabaseService.query(
       `SELECT 
          d.*, 
          u_assigned.name as assigned_user_name,
@@ -272,9 +262,10 @@ export async function POST(
       [documentId]
     );
 
-    const updatedDocument = updatedDocResult[0];
+    const updatedRows = normalizeRows(updatedDocResultRaw);
+    const updatedDocument = updatedRows[0] || null;
     console.log("✅ Assignment successful");
-    console.log("New assignment:", updatedDocument.assigned_user_name);
+    console.log("New assignment:", updatedDocument?.assigned_user_name);
 
     return NextResponse.json(
       {

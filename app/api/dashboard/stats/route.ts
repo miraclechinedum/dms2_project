@@ -11,19 +11,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let payload;
-    try {
-      payload = await AuthService.verifyToken(token);
-    } catch (err) {
+    // Use verifyToken which returns DecodedToken | null
+    const decoded = await AuthService.verifyToken(token);
+    if (!decoded) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // Extract user ID - try different possible property names
-    const userId = payload.id || payload.userId || payload.user_id || payload.sub;
-    
+    // Use centralized helper to resolve canonical userId (string | null)
+    const userId = AuthService.extractUserId(decoded);
     if (!userId) {
-      console.error("User ID not found in token payload:", payload);
-      return NextResponse.json({ error: "User ID not found in token" }, { status: 400 });
+      console.error("User ID not found in token payload:", decoded);
+      return NextResponse.json(
+        { error: "User ID not found in token" },
+        { status: 400 }
+      );
     }
 
     console.log("Fetching stats for user:", userId);
@@ -60,42 +61,61 @@ export async function GET(request: NextRequest) {
     const [totalResult, assignedResult, activityResult] = await Promise.all([
       DatabaseService.query(totalDocumentsQuery, [userId, userId]),
       DatabaseService.query(assignedToUserQuery, [userId]),
-      DatabaseService.query(recentActivityQuery, [userId])
+      DatabaseService.query(recentActivityQuery, [userId]),
     ]);
 
     // Extract counts from results - handle different MySQL result formats
     const extractCount = (result: any, fieldName: string): number => {
-      if (!result || !Array.isArray(result)) return 0;
-      
-      // Handle MySQL2 result format
-      if (Array.isArray(result[0]) && result[0].length > 0) {
-        return result[0][0]?.[fieldName] || 0;
+      if (!result) return 0;
+
+      // MySQL2 nested format: [rows, fields] or [ [ { ... } ] ]
+      if (
+        Array.isArray(result) &&
+        Array.isArray(result[0]) &&
+        result[0].length > 0
+      ) {
+        return Number(result[0][0]?.[fieldName] ?? 0);
       }
-      
-      // Handle direct array format
-      if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object') {
-        return result[0][fieldName] || 0;
+
+      // Direct array of rows
+      if (
+        Array.isArray(result) &&
+        result.length > 0 &&
+        typeof result[0] === "object"
+      ) {
+        return Number(result[0][fieldName] ?? 0);
       }
-      
+
+      // If result itself is an object with the field
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        fieldName in result
+      ) {
+        return Number((result as any)[fieldName] ?? 0);
+      }
+
       return 0;
     };
 
-    const totalDocuments = extractCount(totalResult, 'total_count');
-    const assignedToUser = extractCount(assignedResult, 'assigned_count');
-    const recentActivity = extractCount(activityResult, 'activity_count');
+    const totalDocuments = extractCount(totalResult, "total_count");
+    const assignedToUser = extractCount(assignedResult, "assigned_count");
+    const recentActivity = extractCount(activityResult, "activity_count");
 
-    console.log("Dashboard stats:", { totalDocuments, assignedToUser, recentActivity });
-
-    return NextResponse.json({
+    console.log("Dashboard stats:", {
       totalDocuments,
       assignedToUser,
-      recentActivity
-    }, { status: 200 });
+      recentActivity,
+    });
 
+    return NextResponse.json(
+      { totalDocuments, assignedToUser, recentActivity },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error("Dashboard stats error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Failed to fetch dashboard stats" }, 
+      { error: err?.message ?? "Failed to fetch dashboard stats" },
       { status: 500 }
     );
   }
