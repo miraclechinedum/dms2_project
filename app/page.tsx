@@ -1,13 +1,16 @@
-// app/page.tsx
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/use-auth";
 import { AuthForm } from "@/components/auth/auth-form";
 import { Sidebar } from "@/components/layout/sidebar";
 import { DocumentList } from "@/components/documents/document-list";
 import { DocumentUpload } from "@/components/documents/document-upload";
-import { PdfViewer } from "@/components/pdf/pdf-viewer";
+// ⬇️ Dynamically import PdfViewer so it only loads in browser
+const PdfViewer = dynamic(() => import("@/components/pdf/pdf-viewer"), {
+  ssr: false,
+});
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { UserManagement } from "@/components/users/user-management";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,14 +67,13 @@ export default function Home() {
     );
   }
 
-  // Wrapper to normalize any incoming document from DocumentList into our Document shape
+  // Normalize incoming document from DocumentList into our Document shape
   const handleDocumentSelect = (incoming: any) => {
     if (!incoming) {
       setSelectedDocument(null);
       return;
     }
 
-    // Ensure file_url exists as a string (fallback to empty string if absent)
     const normalized: Document = {
       id: String(incoming.id),
       title: String(incoming.title ?? ""),
@@ -84,7 +86,6 @@ export default function Home() {
   const renderActiveView = () => {
     switch (activeView) {
       case "documents":
-        // pass wrapper instead of setSelectedDocument directly to satisfy types
         return <DocumentList onDocumentSelect={handleDocumentSelect} />;
       case "upload":
         return <DocumentUpload />;
@@ -110,7 +111,7 @@ export default function Home() {
     }
   };
 
-  // Cast Sidebar to any at usage point to avoid prop type mismatch errors
+  // Cast Sidebar to any to avoid prop type mismatch errors
   const SidebarAny = Sidebar as any;
 
   return (
